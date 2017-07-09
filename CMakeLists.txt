@@ -26,7 +26,7 @@ include_directories(${MYSQL_INCLUDE_DIR} ${MYSQL_INCLUDE_DIR_PRIVATE})
 
 add_library(crunch SHARED ${SOURCE_FILES})
 
-target_compile_definitions(crunch PRIVATE DBUG_OFF=1)
+target_compile_definitions(crunch PRIVATE DBUG_OFF=1 CRUNCH_COMPILE_STANDALONE=1)
 
 if(${MYSQL_LIB_DIR} STREQUAL "/usr/lib" OR ${MYSQL_LIB_DIR} STREQUAL "/usr/lib64")
     install(TARGETS crunch LIBRARY DESTINATION "${MYSQL_LIB_DIR}/mysql/plugin" COMPONENT libraries)

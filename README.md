@@ -32,6 +32,6 @@ compiler flags must match for mariadb to load the plugin.
 git clone git@github.com:Shelnutt2/crunch.git
 cd crunch
 mkdir build && cd build
-cmake ..
+cmake .. -DCRUNCH_COMPILE_STANDALONE=ON
 make -j4
 ```
