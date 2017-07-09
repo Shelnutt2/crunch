@@ -4,8 +4,8 @@
 
 #include "crunch.hpp"
 
-#include <private/table.h>
-#include <private/field.h>
+#include <table.h>
+#include <field.h>
 
 // Handler for crunch engine
 handlerton *crunch_hton;
@@ -70,8 +70,15 @@ int crunch::rnd_end() {
   DBUG_ENTER("crunch::rnd_end");
   DBUG_RETURN(0);
 }
-void crunch::position(const uchar *record){}
-int crunch::info(uint){}
+
+void crunch::position(const uchar *record) {
+  DBUG_ENTER("crunch::position");
+}
+
+int crunch::info(uint) {
+  DBUG_ENTER("crunch::info");
+  DBUG_RETURN(0);
+}
 
 /** @brief
   This is a bitmap of flags that indicates how the storage engine
@@ -87,7 +94,10 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
   return 0;
 }
 
-ulonglong crunch::table_flags(void) const{};
+ulonglong crunch::table_flags(void) const{
+  DBUG_ENTER("crunch::table_flags");
+  DBUG_RETURN(0);
+};
 
 /** Store lock as requested by mariadb
  *
@@ -157,11 +167,11 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   ha_table_option_struct *options= table_arg->s->option_struct;
   DBUG_ENTER("crunch::create");
   DBUG_PRINT("info", ("Create for table: %s", name));
-  DBUG_ASSERT(options);
+//DBUG_ASSERT(options);
   for (Field **field= table_arg->s->field; *field; field++)
   {
     ha_field_option_struct *field_options= (*field)->option_struct;
-    DBUG_ASSERT(field_options);
+    //DBUG_ASSERT(field_options);
     DBUG_PRINT("info", ("field: %s",
         (*field)->field_name));
   }

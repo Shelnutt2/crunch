@@ -6,11 +6,11 @@
 #ifndef CRUNCH_CRUNCH_HPP
 #define CRUNCH_CRUNCH_HPP
 
-#include <my_global.h>                  /* ulonglong */
-#include <private/thr_lock.h>           /* THR_LOCK, THR_LOCK_DATA */
-#include <private/handler.h>            /* handler */
-#include <private/my_base.h>            /* ha_rows */
-#include <memory>                       /* unique_ptr */
+#include <my_global.h>          /* ulonglong */
+#include <thr_lock.h>           /* THR_LOCK, THR_LOCK_DATA */
+#include <handler.h>            /* handler */
+#include <my_base.h>            /* ha_rows */
+#include <memory>               /* unique_ptr */
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
