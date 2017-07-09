@@ -12,6 +12,8 @@
 #include <my_base.h>            /* ha_rows */
 #include <memory>               /* unique_ptr */
 
+#define TABLE_EXTENSION ".capnp"
+
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
 

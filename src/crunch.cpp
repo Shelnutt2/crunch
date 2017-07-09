@@ -12,7 +12,7 @@ handlerton *crunch_hton;
 
 // crunch file extensions
 static const char *crunch_exts[] = {
-    ".capnp",
+    TABLE_EXTENSION,
     NullS
 };
 
@@ -163,7 +163,9 @@ int crunch::close(void){
  * @return
  */
 int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info) {
-#ifndef DBUG_OFF
+
+  char name_buff[FN_REFLEN];
+  File create_file;
   ha_table_option_struct *options= table_arg->s->option_struct;
   DBUG_ENTER("crunch::create");
   DBUG_PRINT("info", ("Create for table: %s", name));
@@ -175,7 +177,14 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
     DBUG_PRINT("info", ("field: %s",
         (*field)->field_name));
   }
-#endif
+
+  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_EXTENSION,
+                                        MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
+                              O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
+    DBUG_RETURN(-1);
+
+  my_close(create_file,MYF(0));
+
   DBUG_RETURN(0);
 }
 
