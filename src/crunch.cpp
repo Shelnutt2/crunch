@@ -6,13 +6,18 @@
 
 #include <table.h>
 #include <field.h>
+#include <iostream>
+
+#include "capnp-mysql.hpp"
+#include "utils.hpp"
 
 // Handler for crunch engine
 handlerton *crunch_hton;
 
 // crunch file extensions
 static const char *crunch_exts[] = {
-    TABLE_EXTENSION,
+    TABLE_SCHEME_EXTENSION,
+    TABLE_DATA_EXTENSION,
     NullS
 };
 
@@ -140,18 +145,36 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #ifndef DBUG_OFF
   ha_table_option_struct *options= table->s->option_struct;
 
-  DBUG_ASSERT(options);
+  //DBUG_ASSERT(options);
 #endif
+
+  std::string tableName = name;
+  std::string schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
+  std::string dataFile = tableName +  TABLE_DATA_EXTENSION;
+  schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
+  dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
+
+  try {
+    capnpParsedSchema = parser.parseDiskFile(name, schemaFile, {"/usr/include"});
+    std::string structName = parseFileNameForStructName(name);
+    capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
+  } catch(const std::exception& e) {
+    std::cerr << name << " errored when open file with: " << e.what() << std::endl;
+    close();
+    DBUG_RETURN(-1);
+  };
 
   DBUG_RETURN(0);
 }
 
-/** Close table, currentl does nothing, will unmmap in the future
+/** Close table, currently does nothing, will unmmap in the future
  *
  * @return
  */
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
+  my_close(schemaFileDescriptor, 0);
+  my_close(dataFileDescriptor, 0);
   DBUG_RETURN(0);
 }
 
@@ -170,6 +193,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   DBUG_ENTER("crunch::create");
   DBUG_PRINT("info", ("Create for table: %s", name));
 //DBUG_ASSERT(options);
+
   for (Field **field= table_arg->s->field; *field; field++)
   {
     ha_field_option_struct *field_options= (*field)->option_struct;
@@ -177,8 +201,20 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
     DBUG_PRINT("info", ("field: %s",
         (*field)->field_name));
   }
+  int err = 0;
+  std::string tableName = table_arg->s->table_name.str;
+  tableName[0] = toupper(tableName[0]);
+  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err);
 
-  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_EXTENSION,
+  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_SCHEME_EXTENSION,
+                                        MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
+                              O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
+    DBUG_RETURN(-1);
+
+  write(create_file, capnpSchema.c_str(), capnpSchema.length());
+  my_close(create_file,MYF(0));
+
+  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_DATA_EXTENSION,
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);

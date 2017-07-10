@@ -6,13 +6,17 @@
 #ifndef CRUNCH_CRUNCH_HPP
 #define CRUNCH_CRUNCH_HPP
 
-#include <my_global.h>          /* ulonglong */
-#include <thr_lock.h>           /* THR_LOCK, THR_LOCK_DATA */
-#include <handler.h>            /* handler */
-#include <my_base.h>            /* ha_rows */
-#include <memory>               /* unique_ptr */
+#include <my_global.h>           /* ulonglong */
+#include <thr_lock.h>            /* THR_LOCK, THR_LOCK_DATA */
+#include <handler.h>             /* handler */
+#include <my_base.h>             /* ha_rows */
+#include <memory>                /* unique_ptr */
 
-#define TABLE_EXTENSION ".capnp"
+#include <capnp/schema.h>        /* Cap'n Proto Schema */
+#include <capnp/schema-parser.h> /* Cap'n Proto SchemaParser */
+
+#define TABLE_SCHEME_EXTENSION ".capnp"
+#define TABLE_DATA_EXTENSION ".capnpd"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -47,7 +51,7 @@ public:
 class crunch : public handler {
   public:
     crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){};
-
+    ~crunch() noexcept(true){};
     int rnd_init(bool scan);
     int rnd_next(uchar *buf);
     int rnd_pos(uchar * buf, uchar *pos);
@@ -66,6 +70,13 @@ private:
     THR_LOCK_DATA lock;      ///< MySQL lock
     std::unique_ptr<crunch_share> share;    ///< Shared lock info
     std::unique_ptr<crunch_share> get_share(); ///< Get the share
+
+    ::capnp::ParsedSchema capnpParsedSchema;
+    ::capnp::StructSchema capnpRowSchema;
+    ::capnp::SchemaParser parser;
+
+    int schemaFileDescriptor;
+    int dataFileDescriptor;
 };
 
 
