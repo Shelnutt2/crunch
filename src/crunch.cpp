@@ -55,6 +55,8 @@ struct st_mysql_storage_engine crunch_storage_engine=
 
 int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
+  currentRowNumber = 0;
+  dataPointer = dataFileStart;
   DBUG_RETURN(0);
 }
 int crunch::rnd_next(uchar *buf) {

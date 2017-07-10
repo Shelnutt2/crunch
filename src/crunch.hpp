@@ -77,6 +77,12 @@ private:
 
     int schemaFileDescriptor;
     int dataFileDescriptor;
+
+    // Position variables
+    int currentRowNumber;
+    int records;
+    void *dataPointer;
+    void *dataFileStart;
 };
 
 
