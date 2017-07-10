@@ -148,17 +148,25 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   //DBUG_ASSERT(options);
 #endif
 
+  // Build file names for ondisk
   std::string tableName = name;
   std::string schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
   std::string dataFile = tableName +  TABLE_DATA_EXTENSION;
   schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
   dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
 
+
+  // Catch errors from capnp or libkj
+  // TODO handle errors gracefully.
   try {
+    // Parse schema from what was stored during create table
     capnpParsedSchema = parser.parseDiskFile(name, schemaFile, {"/usr/include"});
+    // Get schema struct name from mysql filepath name
     std::string structName = parseFileNameForStructName(name);
+    // Get the nested structure from file, for now there is only a single struct in the schema files
     capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
   } catch(const std::exception& e) {
+    // Log errors
     std::cerr << name << " errored when open file with: " << e.what() << std::endl;
     close();
     DBUG_RETURN(-1);
@@ -173,6 +181,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
  */
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
+  // Close open files
   my_close(schemaFileDescriptor, 0);
   my_close(dataFileDescriptor, 0);
   DBUG_RETURN(0);
@@ -194,26 +203,24 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   DBUG_PRINT("info", ("Create for table: %s", name));
 //DBUG_ASSERT(options);
 
-  for (Field **field= table_arg->s->field; *field; field++)
-  {
-    ha_field_option_struct *field_options= (*field)->option_struct;
-    //DBUG_ASSERT(field_options);
-    DBUG_PRINT("info", ("field: %s",
-        (*field)->field_name));
-  }
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
+  // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
+  // Build capnp proto schema
   std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err);
 
+  // Let mysql create the file for us
   if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_SCHEME_EXTENSION,
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);
 
+  // Write the capnp schema to schema file
   write(create_file, capnpSchema.c_str(), capnpSchema.length());
   my_close(create_file,MYF(0));
 
+  // Create initial data file
   if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_DATA_EXTENSION,
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)

@@ -10,6 +10,12 @@
 #include <vector>
 #include <regex>
 
+/** Split string into a vector by regex
+ *
+ * @param input
+ * @param regex
+ * @return
+ */
 std::vector<std::string> split(const std::string& input, const std::string& regex) {
   // passing -1 as the submatch index parameter performs splitting
   std::regex re(regex);
@@ -19,6 +25,11 @@ std::vector<std::string> split(const std::string& input, const std::string& rege
   return {first, last};
 }
 
+/** Parse a mysql file path and get the corresponding cap'n proto struct name
+ *
+ * @param filepathName
+ * @return
+ */
 std::string parseFileNameForStructName(std::string filepathName) {
   std::vector<std::string> parts = split(filepathName, "/");
   std::string name = parts[parts.size()-1];

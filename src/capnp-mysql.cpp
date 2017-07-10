@@ -99,7 +99,14 @@ std::string getCapnpTypeFromField(Field *field) {
   return "Unknown";
 }
 
-
+/** Built a string of a cap'n proto structure from mysql fields list
+ *
+ * @param fields
+ * @param structName
+ * @param err
+ * @param id
+ * @return
+ */
 std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id = 0) {
 
   if(id == 0) {
