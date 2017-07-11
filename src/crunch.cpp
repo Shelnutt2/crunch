@@ -10,6 +10,7 @@
 
 #include "capnp-mysql.hpp"
 #include "utils.hpp"
+#include <sys/mman.h>
 
 // Handler for crunch engine
 handlerton *crunch_hton;
@@ -173,6 +174,24 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
     close();
     DBUG_RETURN(-1);
   };
+
+  // Get size of data file needed for mmaping
+  int dataFileSize = getFilesize(dataFile.c_str());
+  // Only mmap if we have data
+  if(dataFileSize >0) {
+    dataPointer = mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
+
+    if (dataPointer == MAP_FAILED) {
+      my_close(dataFileDescriptor, 0);
+      std::cerr << "mmaped failed for " << dataFile << std::endl;
+      DBUG_RETURN(-1);
+    }
+
+    // Set the start pointer to the current dataPointer
+    dataFileStart = dataPointer;
+  } else {
+    dataPointer = dataFileStart = NULL;
+  }
 
   DBUG_RETURN(0);
 }
