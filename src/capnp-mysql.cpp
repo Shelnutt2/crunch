@@ -18,6 +18,7 @@
 #include <kj/debug.h>
 
 #include "capnp-mysql.hpp"
+#include <capnp/dynamic.h>
 
 
 uint64_t generateRandomId() {
@@ -125,6 +126,5 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
 
   return output;
 }
-
 
 #endif //CAPNP_MYSQL_HPP

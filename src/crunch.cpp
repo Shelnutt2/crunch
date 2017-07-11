@@ -30,7 +30,6 @@ static handler* crunch_create_handler(handlerton *hton,
   return new (mem_root) crunch(hton, table);
 }
 
-
 // Initialization function
 static int crunch_init_func(void *p)
 {
@@ -53,6 +52,34 @@ static int crunch_init_func(void *p)
 struct st_mysql_storage_engine crunch_storage_engine=
     { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
+void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
+  for (Field **field=table->field ; *field ; field++)
+  {
+    auto capnpField = dynamicStructReader.get((*field)->field_name);
+    if (!((*field)->is_null_in_record(buf)))
+    {
+      switch (capnpField.getType()) {
+        case capnp::DynamicValue::VOID:
+          break;
+        case capnp::DynamicValue::BOOL:
+          (*field)->store(capnpField.as<bool>());
+          break;
+        case capnp::DynamicValue::INT:
+          (*field)->store(capnpField.as<int64_t>());
+          break;
+        case capnp::DynamicValue::UINT:
+          (*field)->store(capnpField.as<uint64_t>());
+          break;
+        case capnp::DynamicValue::FLOAT:
+          (*field)->store(capnpField.as<double>());
+          break;
+        case capnp::DynamicValue::TEXT:
+          (*field)->store(capnpField.as<capnp::Text>().cStr(), capnpField.as<capnp::Text>().size(), &my_charset_utf8_general_ci);
+          break;
+      }
+    }
+  }
+  }
 
 int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
@@ -63,7 +90,17 @@ int crunch::rnd_init(bool scan) {
 int crunch::rnd_next(uchar *buf) {
   int rc;
   DBUG_ENTER("crunch::rnd_next");
-  rc= HA_ERR_END_OF_FILE;
+
+  if(dataPointer != dataFileStart+(dataFileSize / sizeof(capnp::word))) {
+    dataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
+    dataPointer = dataMessageReader->getEnd();
+    currentRowNumber++;
+
+    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+
+  } else { //End of data file
+    rc = HA_ERR_END_OF_FILE;
+  }
   DBUG_RETURN(rc);
 }
 
@@ -85,6 +122,9 @@ void crunch::position(const uchar *record) {
 
 int crunch::info(uint) {
   DBUG_ENTER("crunch::info");
+  /* This is a lie, but you don't want the optimizer to see zero or 1 */
+  if (stats.records < 2)
+    stats.records= 2;
   DBUG_RETURN(0);
 }
 
@@ -176,12 +216,12 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   };
 
   // Get size of data file needed for mmaping
-  int dataFileSize = getFilesize(dataFile.c_str());
+  dataFileSize = getFilesize(dataFile.c_str());
   // Only mmap if we have data
   if(dataFileSize >0) {
-    dataPointer = mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
+    dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
 
-    if (dataPointer == MAP_FAILED) {
+    if ((void *)dataPointer == MAP_FAILED) {
       my_close(dataFileDescriptor, 0);
       std::cerr << "mmaped failed for " << dataFile << std::endl;
       DBUG_RETURN(-1);
@@ -189,6 +229,9 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
     // Set the start pointer to the current dataPointer
     dataFileStart = dataPointer;
+
+    // get size of a row
+    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
   } else {
     dataPointer = dataFileStart = NULL;
   }

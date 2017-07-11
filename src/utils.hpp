@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <regex>
+#include <sys/stat.h>
 
 /** Split string into a vector by regex
  *
@@ -36,5 +37,17 @@ std::string parseFileNameForStructName(std::string filepathName) {
   name[0] = toupper(name[0]);
   return name;
 }
+
+/**
+ * Get the size of a file
+ * @param filename
+ * @return
+ */
+size_t getFilesize(const char* filename) {
+  struct stat st;
+  stat(filename, &st);
+  return st.st_size;
+}
+
 
 #endif //CRUNCH_UTILS_HPP

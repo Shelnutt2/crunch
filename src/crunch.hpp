@@ -14,6 +14,9 @@
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
 #include <capnp/schema-parser.h> /* Cap'n Proto SchemaParser */
+#include <capnp/message.h>       /* Cap'n Proto Message */
+#include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
+#include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_DATA_EXTENSION ".capnpd"
@@ -67,6 +70,9 @@ class crunch : public handler {
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
 
 private:
+
+    void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
+
     THR_LOCK_DATA lock;      ///< MySQL lock
     std::unique_ptr<crunch_share> share;    ///< Shared lock info
     std::unique_ptr<crunch_share> get_share(); ///< Get the share
@@ -77,12 +83,16 @@ private:
 
     int schemaFileDescriptor;
     int dataFileDescriptor;
+    int dataFileSize;
+    int sizeOfSingleRow;
+
+    std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
     // Position variables
     int currentRowNumber;
     int records;
-    void *dataPointer;
-    void *dataFileStart;
+    const capnp::word *dataPointer;
+    const capnp::word *dataFileStart;
 };
 
 
