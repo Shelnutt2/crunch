@@ -53,11 +53,14 @@ struct st_mysql_storage_engine crunch_storage_engine=
     { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
-  for (Field **field=table->field ; *field ; field++)
-  {
+  //std::vector<uint8_t> nulls;
+  for (Field **field=table->field ; *field ; field++) {
     auto capnpField = dynamicStructReader.get((*field)->field_name);
-    if (!((*field)->is_null_in_record(buf)))
-    {
+    /*if(capnpField.getType() == capnp::DynamicValue::VOID)
+      nulls.push_back(1);
+    else
+      nulls.push_back(0);*/
+    if (!((*field)->is_null_in_record(buf))) {
       switch (capnpField.getType()) {
         case capnp::DynamicValue::VOID:
           break;
@@ -79,7 +82,9 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       }
     }
   }
-  }
+
+  memset(buf, 0, table->s->null_bytes); /* We do not implement nulls yet! */
+}
 
 int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
