@@ -9,6 +9,8 @@
 #include <my_global.h>           /* ulonglong */
 #include <thr_lock.h>            /* THR_LOCK, THR_LOCK_DATA */
 #include <handler.h>             /* handler */
+#include <table.h>               /* table */
+#include <field.h>               /* field */
 #include <my_base.h>             /* ha_rows */
 #include <memory>                /* unique_ptr */
 
@@ -59,6 +61,7 @@ class crunch : public handler {
     int rnd_next(uchar *buf);
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
+    int write_row(uchar *buf);
     void position(const uchar *record);
     int info(uint);
     ulong index_flags(uint idx, uint part, bool all_parts) const;
@@ -68,6 +71,37 @@ class crunch : public handler {
     int close(void);
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
+
+    static inline bool
+    row_is_fixed_length(TABLE *table)
+    {
+      return table->s->blob_fields + table->s->varchar_fields == 0;
+    }
+
+    static inline void
+    extract_varchar_field_info(Field *field, uint32_t *len_bytes,
+                               uint32_t *field_size, uint8_t *src)
+    {
+      // see Field_blob::Field_blob() (in field.h) - need 1-4 bytes to
+      // store the real size
+      if (likely(field->field_length <= 255)) {
+        *field_size = *src;
+        *len_bytes = 1;
+        return;
+      }
+      if (likely(field->field_length <= 65535)) {
+        *field_size = *(uint16_t *)src;
+        *len_bytes = 2;
+        return;
+      }
+      if (likely(field->field_length <= 16777215)) {
+        *field_size = (src[2] << 16) | (src[1] << 8) | (src[0] << 0);
+        *len_bytes = 3;
+        return;
+      }
+      *field_size = *(uint32_t *)src;
+      *len_bytes = 4;
+    }
 
 private:
 
