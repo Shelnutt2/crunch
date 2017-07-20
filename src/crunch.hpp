@@ -108,6 +108,7 @@ private:
     void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
     bool mmapData();
+    bool mremapData();
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     std::unique_ptr<crunch_share> share;    ///< Shared lock info

@@ -59,12 +59,12 @@ bool crunch::mmapData() {
   dataFileSize = getFilesize(dataFile.c_str());
   // Only mmap if we have data
   if(dataFileSize >0) {
-    DBUG_PRINT("crunch::open::mmap", ("Entering"));
+    DBUG_PRINT("crunch::mmap", ("Entering"));
     dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
 
     if ((void *)dataPointer == MAP_FAILED) {
-      perror("Errror ");
-      DBUG_PRINT("crunch::open::mmap", ("Errror: %s", strerror(errno)));
+      perror("Error ");
+      DBUG_PRINT("crunch::mmap", ("Error: %s", strerror(errno)));
       std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
       return false;
@@ -79,6 +79,43 @@ bool crunch::mmapData() {
     dataPointer = dataFileStart = NULL;
   }
   return true;
+}
+
+bool crunch::mremapData() {
+#ifdef __linux // Only linux support mremap call
+  int oldDataFileSize = dataFileSize;
+  // Get size of data file needed for mremaping
+  dataFileSize = getFilesize(dataFile.c_str());
+  // Only mmap if we have data
+  if(dataFileSize >0) {
+    DBUG_PRINT("crunch::mremap", ("Entering"));
+
+    dataPointer = (capnp::word *)mremap((void*)dataFileStart, oldDataFileSize, dataFileSize, MREMAP_MAYMOVE);
+    if ((void *)dataPointer == MAP_FAILED) {
+      perror("Error ");
+      DBUG_PRINT("crunch::mremap", ("Error: %s", strerror(errno)));
+      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      my_close(dataFileDescriptor, 0);
+      return false;
+    }
+
+    // Set the start pointer to the current dataPointer
+    dataFileStart = dataPointer;
+
+    // get size of a row
+    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
+  } else {
+    dataPointer = dataFileStart = NULL;
+  }
+  return true;
+#else
+  if (munmap((void*)dataFileStart, dataFileSize) == -1) {
+    perror("Error un-mmapping the file");
+    DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
+    return false;
+  }
+  return mmapData();
+#endif
 }
 
 void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
@@ -382,6 +419,10 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
   // Close open files
+  if (munmap((void*)dataFileStart, dataFileSize) == -1) {
+    perror("Error un-mmapping the file");
+    DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
+  }
   my_close(schemaFileDescriptor, 0);
   my_close(dataFileDescriptor, 0);
   DBUG_RETURN(0);
