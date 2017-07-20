@@ -53,6 +53,34 @@ static int crunch_init_func(void *p)
 struct st_mysql_storage_engine crunch_storage_engine=
     { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
+
+bool crunch::mmapData() {
+  // Get size of data file needed for mmaping
+  dataFileSize = getFilesize(dataFile.c_str());
+  // Only mmap if we have data
+  if(dataFileSize >0) {
+    DBUG_PRINT("crunch::open::mmap", ("Entering"));
+    dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
+
+    if ((void *)dataPointer == MAP_FAILED) {
+      perror("Errror ");
+      DBUG_PRINT("crunch::open::mmap", ("Errror: %s", strerror(errno)));
+      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      my_close(dataFileDescriptor, 0);
+      return false;
+    }
+
+    // Set the start pointer to the current dataPointer
+    dataFileStart = dataPointer;
+
+    // get size of a row
+    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
+  } else {
+    dataPointer = dataFileStart = NULL;
+  }
+  return true;
+}
+
 void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
 
   // Loop through each field to get the data
@@ -199,7 +227,6 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_STRING:
         case MYSQL_TYPE_VAR_STRING:
         case MYSQL_TYPE_SET: {
-          std::cerr << "In the field for varchar" << std::endl;
           char attribute_buffer[1024];
           String attribute(attribute_buffer, sizeof(attribute_buffer),
                            &my_charset_utf8_general_ci);
@@ -320,9 +347,9 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #endif
 
   // Build file names for ondisk
-  std::string tableName = name;
-  std::string schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
-  std::string dataFile = tableName +  TABLE_DATA_EXTENSION;
+  tableName = name;
+  schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
+  dataFile = tableName +  TABLE_DATA_EXTENSION;
   schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
   dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
 
@@ -343,30 +370,8 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
     DBUG_RETURN(2);
   };
 
-  // Get size of data file needed for mmaping
-  dataFileSize = getFilesize(dataFile.c_str());
-  // Only mmap if we have data
-  if(dataFileSize >0) {
-    DBUG_PRINT("crunch::open::mmap", ("Entering"));
-    dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
-
-    if ((void *)dataPointer == MAP_FAILED) {
-      perror("Errror ");
-      DBUG_PRINT("crunch::open::mmap", ("Errror: %s", strerror(errno)));
-      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
-      my_close(dataFileDescriptor, 0);
-      DBUG_RETURN(-1);
-    }
-
-    // Set the start pointer to the current dataPointer
-    dataFileStart = dataPointer;
-
-    // get size of a row
-    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
-  } else {
-    dataPointer = dataFileStart = NULL;
-  }
-
+  if(!mmapData())
+    DBUG_RETURN(-1);
   DBUG_RETURN(0);
 }
 

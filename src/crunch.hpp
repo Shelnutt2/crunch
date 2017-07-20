@@ -107,6 +107,8 @@ private:
 
     void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
+    bool mmapData();
+
     THR_LOCK_DATA lock;      ///< MySQL lock
     std::unique_ptr<crunch_share> share;    ///< Shared lock info
     std::unique_ptr<crunch_share> get_share(); ///< Get the share
@@ -115,6 +117,9 @@ private:
     ::capnp::StructSchema capnpRowSchema;
     ::capnp::SchemaParser parser;
 
+    std::string tableName;
+    std::string schemaFile;
+    std::string dataFile;
     int schemaFileDescriptor;
     int dataFileDescriptor;
     int dataFileSize;
