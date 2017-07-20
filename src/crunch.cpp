@@ -87,7 +87,7 @@ bool crunch::mremapData() {
   // Get size of data file needed for mremaping
   dataFileSize = getFilesize(dataFile.c_str());
   // Only mmap if we have data
-  if(dataFileSize >0) {
+  if(oldDataFileSize >0) {
     DBUG_PRINT("crunch::mremap", ("Entering"));
 
     dataPointer = (capnp::word *)mremap((void*)dataFileStart, oldDataFileSize, dataFileSize, MREMAP_MAYMOVE);
@@ -109,7 +109,7 @@ bool crunch::mremapData() {
   }
   return true;
 #else
-  if (munmap((void*)dataFileStart, dataFileSize) == -1) {
+  if (dataFileSize>0 && dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
     perror("Error un-mmapping the file");
     DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
     return false;
@@ -220,8 +220,6 @@ int crunch::write_row(uchar *buf) {
 
   // Use stored structure
   capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
-
-  uint32_t size;
 
   // Loop through each field to write row
   for (Field **field=table->field ; *field ; field++) {
