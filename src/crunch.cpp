@@ -303,6 +303,12 @@ int crunch::write_row(uchar *buf) {
   //Write message to file
   capnp::writeMessageToFd(dataFileDescriptor, tableRow);
 
+  // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
+  if(!mremapData()) {
+    std::cerr << "Could not mremap data file after writing row" << std::endl;
+    DBUG_RETURN(-1);
+  }
+
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->read_set, old_map);
   DBUG_RETURN(0);
