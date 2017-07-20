@@ -434,7 +434,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
   // Close open files
-  if (munmap((void*)dataFileStart, dataFileSize) == -1) {
+  if (dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
     perror("Error un-mmapping the file");
     DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
   }
