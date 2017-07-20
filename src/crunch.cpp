@@ -162,7 +162,8 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
 
 int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
-
+  // Lock basic mutex
+  mysql_mutex_lock(&share->mutex);
   // Reset row number
   currentRowNumber = 0;
   // Reset starting mmap position
@@ -201,12 +202,16 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
 
 int crunch::rnd_end() {
   DBUG_ENTER("crunch::rnd_end");
+  // Unlock basic mutex
+  mysql_mutex_unlock(&share->mutex);
   DBUG_RETURN(0);
 }
 
 int crunch::write_row(uchar *buf) {
 
   DBUG_ENTER("crunch::write_row");
+  // Lock basic mutex
+  mysql_mutex_lock(&share->mutex);
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 
@@ -309,8 +314,12 @@ int crunch::write_row(uchar *buf) {
     DBUG_RETURN(-1);
   }
 
+
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->read_set, old_map);
+
+  // Unlock basic mutex
+  mysql_mutex_unlock(&share->mutex);
   DBUG_RETURN(0);
 }
 
