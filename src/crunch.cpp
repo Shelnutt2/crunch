@@ -4,15 +4,22 @@
 
 #include "crunch.hpp"
 
-#include <table.h>
-#include <field.h>
+#include <iostream>
+#include <string>
+
+#include "capnp-mysql.hpp"
+#include "utils.hpp"
+#include <sys/mman.h>
+
+#include <capnp/serialize.h>
 
 // Handler for crunch engine
 handlerton *crunch_hton;
 
 // crunch file extensions
 static const char *crunch_exts[] = {
-    ".capnp",
+    TABLE_SCHEME_EXTENSION,
+    TABLE_DATA_EXTENSION,
     NullS
 };
 
@@ -23,7 +30,6 @@ static handler* crunch_create_handler(handlerton *hton,
 {
   return new (mem_root) crunch(hton, table);
 }
-
 
 // Initialization function
 static int crunch_init_func(void *p)
@@ -48,19 +54,148 @@ struct st_mysql_storage_engine crunch_storage_engine=
     { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 
+bool crunch::mmapData() {
+  // Get size of data file needed for mmaping
+  dataFileSize = getFilesize(dataFile.c_str());
+  // Only mmap if we have data
+  if(dataFileSize >0) {
+    DBUG_PRINT("crunch::mmap", ("Entering"));
+    dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
+
+    if ((void *)dataPointer == MAP_FAILED) {
+      perror("Error ");
+      DBUG_PRINT("crunch::mmap", ("Error: %s", strerror(errno)));
+      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      my_close(dataFileDescriptor, 0);
+      return false;
+    }
+
+    // Set the start pointer to the current dataPointer
+    dataFileStart = dataPointer;
+
+    // get size of a row
+    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
+  } else {
+    dataPointer = dataFileStart = NULL;
+  }
+  return true;
+}
+
+bool crunch::mremapData() {
+#ifdef __linux // Only linux support mremap call
+  int oldDataFileSize = dataFileSize;
+  // Get size of data file needed for mremaping
+  dataFileSize = getFilesize(dataFile.c_str());
+  // Only mmap if we have data
+  if(oldDataFileSize >0 && dataFileStart != NULL) {
+    DBUG_PRINT("crunch::mremap", ("Entering"));
+
+    dataPointer = (capnp::word *)mremap((void*)dataFileStart, oldDataFileSize, dataFileSize, MREMAP_MAYMOVE);
+    if ((void *)dataPointer == MAP_FAILED) {
+      perror("Error ");
+      DBUG_PRINT("crunch::mremap", ("Error: %s", strerror(errno)));
+      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      my_close(dataFileDescriptor, 0);
+      return false;
+    }
+
+    // Set the start pointer to the current dataPointer
+    dataFileStart = dataPointer;
+
+    // get size of a row
+    sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
+  } else {
+    dataPointer = dataFileStart = NULL;
+    return mmapData();
+  }
+  return true;
+#else
+  if (dataFileSize>0 && dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
+    perror("Error un-mmapping the file");
+    DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
+    return false;
+  }
+  return mmapData();
+#endif
+}
+
+void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
+
+  // Loop through each field to get the data
+  for (Field **field=table->field ; *field ; field++) {
+    auto capnpField = dynamicStructReader.get((*field)->field_name);
+    // If the field is not null, the we need to get the data and store it in the field
+    if (!((*field)->is_null_in_record(buf))) {
+      switch (capnpField.getType()) {
+        case capnp::DynamicValue::VOID:
+          break;
+        case capnp::DynamicValue::BOOL:
+          (*field)->store(capnpField.as<bool>());
+          break;
+        case capnp::DynamicValue::INT:
+          (*field)->store(capnpField.as<int64_t>(), 0);
+          break;
+        case capnp::DynamicValue::UINT:
+          (*field)->store(capnpField.as<uint64_t>());
+          break;
+        case capnp::DynamicValue::FLOAT:
+          (*field)->store(capnpField.as<double>());
+          break;
+        case capnp::DynamicValue::TEXT: {
+          const char *row_string = capnpField.as<capnp::Text>().cStr();
+          (*field)->store(row_string, strlen(row_string), &my_charset_utf8_general_ci);
+          break;
+        }
+        case capnp::DynamicValue::DATA:
+        case capnp::DynamicValue::LIST:
+        case capnp::DynamicValue::ENUM:
+        case capnp::DynamicValue::STRUCT:
+        case capnp::DynamicValue::CAPABILITY:
+        case capnp::DynamicValue::ANY_POINTER:
+        case capnp::DynamicValue::UNKNOWN:
+        break;
+      }
+    }
+  }
+
+  memset(buf, 0, table->s->null_bytes); /* We do not implement nulls yet! */
+}
+
 int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
+  // Lock basic mutex
+  mysql_mutex_lock(&share->mutex);
+  // Reset row number
+  currentRowNumber = 0;
+  // Reset starting mmap position
+  dataPointer = dataFileStart;
   DBUG_RETURN(0);
 }
 int crunch::rnd_next(uchar *buf) {
-  int rc;
+  int rc = 0;
   DBUG_ENTER("crunch::rnd_next");
-  rc= HA_ERR_END_OF_FILE;
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
+
+  // Before reading we make sure we have not reached the end of the mmap'ed space, which is the end of the file on disk
+  if(dataPointer != dataFileStart+(dataFileSize / sizeof(capnp::word))) {
+    //Read data
+    dataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
+    dataPointer = dataMessageReader->getEnd();
+    currentRowNumber++;
+
+    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+
+  } else { //End of data file
+    rc = HA_ERR_END_OF_FILE;
+  }
+  // Reset bitmap to original
+  dbug_tmp_restore_column_map(table->write_set, orig);
   DBUG_RETURN(rc);
 }
 
 int crunch::rnd_pos(uchar * buf, uchar *pos) {
-  int rc;
+  int rc = 0;
   DBUG_ENTER("crunch::rnd_pos");
   rc= HA_ERR_WRONG_COMMAND;
   DBUG_RETURN(rc);
@@ -68,6 +203,122 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
 
 int crunch::rnd_end() {
   DBUG_ENTER("crunch::rnd_end");
+  // Unlock basic mutex
+  mysql_mutex_unlock(&share->mutex);
+  DBUG_RETURN(0);
+}
+
+int crunch::write_row(uchar *buf) {
+
+  DBUG_ENTER("crunch::write_row");
+  // Lock basic mutex
+  mysql_mutex_lock(&share->mutex);
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
+
+  // Use a message builder for reach row
+  capnp::MallocMessageBuilder tableRow;
+
+  // Use stored structure
+  capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
+
+  // Loop through each field to write row
+  for (Field **field=table->field ; *field ; field++) {
+    if ((*field)->is_null()) {
+      continue;
+    } else {
+      switch ((*field)->type()) {
+
+        case MYSQL_TYPE_DOUBLE:{
+          row.set((*field)->field_name, (*field)->val_real());
+          break;
+        }
+        case MYSQL_TYPE_DECIMAL:
+        case MYSQL_TYPE_NEWDECIMAL: {
+          row.set((*field)->field_name, (*field)->val_real());
+          break;
+        }
+
+        case MYSQL_TYPE_FLOAT: {
+          row.set((*field)->field_name, (*field)->val_real());
+          break;
+        }
+
+        case MYSQL_TYPE_TINY:
+        case MYSQL_TYPE_SHORT:
+        case MYSQL_TYPE_YEAR:
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_LONG:
+        case MYSQL_TYPE_LONGLONG: {
+          row.set((*field)->field_name, (*field)->val_int());
+          break;
+        }
+
+        case MYSQL_TYPE_NULL: {
+          row.set((*field)->field_name, capnp::DynamicValue::VOID);
+          break;
+        }
+
+        case MYSQL_TYPE_BIT: {
+          row.set((*field)->field_name, (*field)->val_bool());
+          break;
+        }
+
+        case MYSQL_TYPE_VARCHAR:
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_VAR_STRING:
+        case MYSQL_TYPE_SET: {
+          char attribute_buffer[1024];
+          String attribute(attribute_buffer, sizeof(attribute_buffer),
+                           &my_charset_utf8_general_ci);
+          (*field)->val_str(&attribute, &attribute);
+          row.set((*field)->field_name, attribute.c_ptr());
+          break;
+        }
+
+        case MYSQL_TYPE_GEOMETRY:
+        case MYSQL_TYPE_BLOB:
+        case MYSQL_TYPE_LONG_BLOB:
+        case MYSQL_TYPE_MEDIUM_BLOB:
+        case MYSQL_TYPE_TINY_BLOB:
+        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+        case MYSQL_TYPE_TIME:
+        case MYSQL_TYPE_TIME2:
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+        case MYSQL_TYPE_NEWDATE: {
+          char attribute_buffer[1024];
+          String attribute(attribute_buffer, sizeof(attribute_buffer),
+                            &my_charset_bin);
+          (*field)->val_str(&attribute);
+          capnp::DynamicValue::Reader r(attribute.ptr());
+          row.set((*field)->field_name, r);
+          break;
+        }
+      }
+    }
+  }
+
+  // Set the fileDescriptor to the end of the file
+  lseek(dataFileDescriptor, 0, SEEK_END);
+  //Write message to file
+  capnp::writeMessageToFd(dataFileDescriptor, tableRow);
+
+  // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
+  if(!mremapData()) {
+    std::cerr << "Could not mremap data file after writing row" << std::endl;
+    DBUG_RETURN(-1);
+  }
+
+
+  // Reset bitmap to original
+  dbug_tmp_restore_column_map(table->read_set, old_map);
+
+  // Unlock basic mutex
+  mysql_mutex_unlock(&share->mutex);
   DBUG_RETURN(0);
 }
 
@@ -77,6 +328,9 @@ void crunch::position(const uchar *record) {
 
 int crunch::info(uint) {
   DBUG_ENTER("crunch::info");
+  /* This is a lie, but you don't want the optimizer to see zero or 1 */
+  if (stats.records < 2)
+    stats.records= 2;
   DBUG_RETURN(0);
 }
 
@@ -140,18 +394,51 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #ifndef DBUG_OFF
   ha_table_option_struct *options= table->s->option_struct;
 
-  DBUG_ASSERT(options);
+  //DBUG_ASSERT(options);
 #endif
 
+  // Build file names for ondisk
+  tableName = name;
+  schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
+  dataFile = tableName +  TABLE_DATA_EXTENSION;
+  schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
+  dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
+
+
+  // Catch errors from capnp or libkj
+  // TODO handle errors gracefully.
+  try {
+    // Parse schema from what was stored during create table
+    capnpParsedSchema = parser.parseDiskFile(name, schemaFile, {"/usr/include"});
+    // Get schema struct name from mysql filepath name
+    std::string structName = parseFileNameForStructName(name);
+    // Get the nested structure from file, for now there is only a single struct in the schema files
+    capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
+  } catch(const std::exception& e) {
+    // Log errors
+    std::cerr << name << " errored when open file with: " << e.what() << std::endl;
+    close();
+    DBUG_RETURN(2);
+  };
+
+  if(!mmapData())
+    DBUG_RETURN(-1);
   DBUG_RETURN(0);
 }
 
-/** Close table, currentl does nothing, will unmmap in the future
+/** Close table, currently does nothing, will unmmap in the future
  *
  * @return
  */
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
+  // Close open files
+  if (dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
+    perror("Error un-mmapping the file");
+    DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
+  }
+  my_close(schemaFileDescriptor, 0);
+  my_close(dataFileDescriptor, 0);
   DBUG_RETURN(0);
 }
 
@@ -163,19 +450,39 @@ int crunch::close(void){
  * @return
  */
 int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info) {
-#ifndef DBUG_OFF
+
+  char name_buff[FN_REFLEN];
+  File create_file;
   ha_table_option_struct *options= table_arg->s->option_struct;
   DBUG_ENTER("crunch::create");
   DBUG_PRINT("info", ("Create for table: %s", name));
 //DBUG_ASSERT(options);
-  for (Field **field= table_arg->s->field; *field; field++)
-  {
-    ha_field_option_struct *field_options= (*field)->option_struct;
-    //DBUG_ASSERT(field_options);
-    DBUG_PRINT("info", ("field: %s",
-        (*field)->field_name));
-  }
-#endif
+
+  int err = 0;
+  std::string tableName = table_arg->s->table_name.str;
+  // Cap'n Proto schema's require the first character to be upper case for struct names
+  tableName[0] = toupper(tableName[0]);
+  // Build capnp proto schema
+  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err);
+
+  // Let mysql create the file for us
+  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_SCHEME_EXTENSION,
+                                        MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
+                              O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
+    DBUG_RETURN(-1);
+
+  // Write the capnp schema to schema file
+  write(create_file, capnpSchema.c_str(), capnpSchema.length());
+  my_close(create_file,MYF(0));
+
+  // Create initial data file
+  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_DATA_EXTENSION,
+                                        MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
+                              O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
+    DBUG_RETURN(-1);
+
+  my_close(create_file,MYF(0));
+
   DBUG_RETURN(0);
 }
 

@@ -7,7 +7,7 @@ project(crunch)
 
 set(CMAKE_CXX_STANDARD 14)
 
-file(GLOB SOURCE_FILES src/*.cpp)
+file(GLOB SOURCE_FILES src/*.cpp capnp-mysql.cpp)
 
 IF(CRUNCH_COMPILE_STANDALONE)
 
@@ -37,3 +37,8 @@ endif()
 ELSE()
     MYSQL_ADD_PLUGIN(crunch ${SOURCE_FILES} STORAGE_ENGINE MODULE_ONLY RECOMPILE_FOR_EMBEDDED)
 ENDIF()
+
+
+find_package(CapnProto REQUIRED)
+include_directories(${CAPNP_INCLUDE_DIRS})
+target_link_libraries(crunch ${CAPNP_LIBRARIES})
