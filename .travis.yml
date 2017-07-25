@@ -1,6 +1,6 @@
 # Use new trusty images, should yield newer compilers and packages
 dist: trusty
-sudo: false
+sudo: true
 language: cpp
 
 git:
@@ -17,14 +17,6 @@ addons:
       - cmake
       - cmake-data
 
-before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -y lcov rubygems-integration
-  - gem install lcoveralls
-  - mysql -e "create database IF NOT EXISTS test;" -uroot
-  - mysql -uroot test < tests/test.sql
-
-
 # before_install runs after matrix.addons.apt installation targets in the matrix
 before_install:
   - export CTEST_OUTPUT_ON_FAILURE=1
@@ -34,6 +26,7 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config gcc; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config g++; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config gcov; fi
+  - if [[ -x "${TRAVIS_BUILD_DIR}/ci/build_capnp.sh" ]]; then source ${TRAVIS_BUILD_DIR}/ci/build_capnp.sh; fi
 
 
 # Build steps
