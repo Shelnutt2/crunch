@@ -1,4 +1,7 @@
 # Crunch
+
+[![Build Status](https://travis-ci.org/Shelnutt2/crunch.svg?branch=master)](https://travis-ci.org/Shelnutt2/crunch)
+
 MariaDB storage engine based on cap'n proto storage
 
 ## Requirements
