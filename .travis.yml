@@ -40,5 +40,5 @@ script:
   - cd mariadb-10.2.7
   - mkdir build
   - cd build
-  - cmake -DCMAKE_BUILD_TYPE=Release .. && make -j24
-  - make test
+  - cmake -DCMAKE_BUILD_TYPE=Release .. 
+  - make -j24
