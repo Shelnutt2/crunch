@@ -34,10 +34,10 @@ script:
   - mkdir tmp
   - mv !(tmp) tmp # Move everything but tmp
   #- git clone https://github.com/MariaDB/server.git -b mariadb-10.2.7
-  - wget https://github.com/MariaDB/server/archive/mariadb-10.2.7.tar.gz
+  - wget https://downloads.mariadb.org/interstitial/mariadb-10.2.7/source/mariadb-10.2.7.tar.gz
   - tar xf mariadb-10.2.7.tar.gz
-  - mv tmp server-mariadb-10.2.7/storage/crunch
-  - cd server-mariadb-10.2.7
+  - mv tmp mariadb-10.2.7/storage/crunch
+  - cd mariadb-10.2.7
   - mkdir build
   - cd build
   - cmake -DCMAKE_BUILD_TYPE=Release .. && make -j24
