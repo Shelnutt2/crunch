@@ -87,7 +87,7 @@ bool crunch::mremapData() {
   // Get size of data file needed for mremaping
   dataFileSize = getFilesize(dataFile.c_str());
   // Only mmap if we have data
-  if(oldDataFileSize >0) {
+  if(oldDataFileSize >0 && dataFileStart != NULL) {
     DBUG_PRINT("crunch::mremap", ("Entering"));
 
     dataPointer = (capnp::word *)mremap((void*)dataFileStart, oldDataFileSize, dataFileSize, MREMAP_MAYMOVE);
@@ -106,6 +106,7 @@ bool crunch::mremapData() {
     sizeOfSingleRow = (dataFileStart - capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))).getEnd()) / sizeof(capnp::word);
   } else {
     dataPointer = dataFileStart = NULL;
+    return mmapData();
   }
   return true;
 #else
