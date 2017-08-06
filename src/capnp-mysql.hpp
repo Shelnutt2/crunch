@@ -18,6 +18,8 @@
 
 #include <field.h>
 
+#define NULL_COLUMN_FIELD "nullColumns"
+
 uint64_t generateRandomId();
 
 

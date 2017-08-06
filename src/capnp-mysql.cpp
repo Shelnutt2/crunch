@@ -2,9 +2,6 @@
 // Created by seth on 7/6/17.
 //
 
-#ifndef CAPNP_MYSQL_HPP
-#define CAPNP_MYSQL_HPP
-
 #include <string>
 #include <unordered_map>
 #include <map>
@@ -108,7 +105,7 @@ std::string getCapnpTypeFromField(Field *field) {
  * @param id
  * @return
  */
-std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id = 0) {
+std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id) {
 
   if(id == 0) {
     id = generateRandomId();
@@ -116,9 +113,10 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
   std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
   output += "struct " + structName + " {\n";
 
+  output += std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   for (Field **field = fields; *field; field++)
   {
-    output += "  " + std::string((*field)->field_name) + " @" + std::to_string((*field)->field_index) + " :" + getCapnpTypeFromField(*field) + ";\n";
+    output += "  " + std::string((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
 
   }
 
@@ -126,5 +124,3 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
 
   return output;
 }
-
-#endif //CAPNP_MYSQL_HPP
