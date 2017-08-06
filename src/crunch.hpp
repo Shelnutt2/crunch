@@ -131,6 +131,7 @@ private:
     // Position variables
     int currentRowNumber;
     int records;
+    int numFields;
     const capnp::word *dataPointer;
     const capnp::word *dataFileStart;
 };

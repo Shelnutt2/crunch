@@ -121,11 +121,18 @@ bool crunch::mremapData() {
 
 void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
 
+  //Get nulls
+  auto nulls = dynamicStructReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
+
   // Loop through each field to get the data
+  int colNumber = 0;
+  std::vector<bool> nullBits;
   for (Field **field=table->field ; *field ; field++) {
     auto capnpField = dynamicStructReader.get((*field)->field_name);
-    // If the field is not null, the we need to get the data and store it in the field
-    if (!((*field)->is_null_in_record(buf))) {
+
+    if(!nulls[colNumber].as<bool>()) {
+      (*field)->set_notnull();
+
       switch (capnpField.getType()) {
         case capnp::DynamicValue::VOID:
           break;
@@ -155,10 +162,12 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
         case capnp::DynamicValue::UNKNOWN:
         break;
       }
+    } else {
+      (*field)->set_null();
     }
+    colNumber++;
   }
 
-  memset(buf, 0, table->s->null_bytes); /* We do not implement nulls yet! */
 }
 
 int crunch::rnd_init(bool scan) {
@@ -174,6 +183,7 @@ int crunch::rnd_init(bool scan) {
 int crunch::rnd_next(uchar *buf) {
   int rc = 0;
   DBUG_ENTER("crunch::rnd_next");
+
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
 
@@ -222,11 +232,16 @@ int crunch::write_row(uchar *buf) {
   // Use stored structure
   capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
 
+  capnp::DynamicList::Builder nulls =  row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
+
   // Loop through each field to write row
+
+  int index = 0;
   for (Field **field=table->field ; *field ; field++) {
     if ((*field)->is_null()) {
-      continue;
+      nulls.set(index++, true);
     } else {
+      nulls.set(index++, false);
       switch ((*field)->type()) {
 
         case MYSQL_TYPE_DOUBLE:{
@@ -423,6 +438,11 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
   if(!mmapData())
     DBUG_RETURN(-1);
+
+  numFields = 0;
+  for (Field **field=table->field ; *field ; field++) {
+    numFields++;
+  }
   DBUG_RETURN(0);
 }
 
