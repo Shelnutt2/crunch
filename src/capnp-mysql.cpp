@@ -116,11 +116,27 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
   output += std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   for (Field **field = fields; *field; field++)
   {
-    output += "  " + std::string((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
+    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
 
   }
 
   output += "}";
 
   return output;
+}
+
+std::string camelCase(std::string mysqlString)  {
+  std::string camelString = mysqlString;
+  for (uint i = 0; i < camelString.length(); i++){
+    if (camelString[i] == '_'){
+      std::string tmpString = camelString.substr(i + 1, 1);
+      transform(tmpString.begin(), tmpString.end(), tmpString.begin(), toupper);
+      camelString.erase(i, 1);
+      //camelString.insert(i, tempString);
+      for(uint j = 0; j < tmpString.length(); j++) {
+        camelString[i+j] = tmpString[j];
+      }
+    }
+  }
+  return camelString;
 }
