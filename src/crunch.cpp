@@ -128,7 +128,8 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
   int colNumber = 0;
   std::vector<bool> nullBits;
   for (Field **field=table->field ; *field ; field++) {
-    auto capnpField = dynamicStructReader.get((*field)->field_name);
+    std::string capnpFieldName = camelCase((*field)->field_name);
+    auto capnpField = dynamicStructReader.get(capnpFieldName);
 
     if(!nulls[colNumber].as<bool>()) {
       (*field)->set_notnull();
@@ -238,6 +239,7 @@ int crunch::write_row(uchar *buf) {
 
   int index = 0;
   for (Field **field=table->field ; *field ; field++) {
+    std::string capnpFieldName = camelCase((*field)->field_name);
     if ((*field)->is_null()) {
       nulls.set(index++, true);
     } else {
@@ -245,17 +247,17 @@ int crunch::write_row(uchar *buf) {
       switch ((*field)->type()) {
 
         case MYSQL_TYPE_DOUBLE:{
-          row.set((*field)->field_name, (*field)->val_real());
+          row.set(capnpFieldName, (*field)->val_real());
           break;
         }
         case MYSQL_TYPE_DECIMAL:
         case MYSQL_TYPE_NEWDECIMAL: {
-          row.set((*field)->field_name, (*field)->val_real());
+          row.set(capnpFieldName, (*field)->val_real());
           break;
         }
 
         case MYSQL_TYPE_FLOAT: {
-          row.set((*field)->field_name, (*field)->val_real());
+          row.set(capnpFieldName, (*field)->val_real());
           break;
         }
 
@@ -265,17 +267,17 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_INT24:
         case MYSQL_TYPE_LONG:
         case MYSQL_TYPE_LONGLONG: {
-          row.set((*field)->field_name, (*field)->val_int());
+          row.set(capnpFieldName, (*field)->val_int());
           break;
         }
 
         case MYSQL_TYPE_NULL: {
-          row.set((*field)->field_name, capnp::DynamicValue::VOID);
+          row.set(capnpFieldName, capnp::DynamicValue::VOID);
           break;
         }
 
         case MYSQL_TYPE_BIT: {
-          row.set((*field)->field_name, (*field)->val_bool());
+          row.set(capnpFieldName, (*field)->val_bool());
           break;
         }
 
@@ -287,7 +289,7 @@ int crunch::write_row(uchar *buf) {
           String attribute(attribute_buffer, sizeof(attribute_buffer),
                            &my_charset_utf8_general_ci);
           (*field)->val_str(&attribute, &attribute);
-          row.set((*field)->field_name, attribute.c_ptr());
+          row.set(capnpFieldName, attribute.c_ptr());
           break;
         }
 
@@ -310,7 +312,7 @@ int crunch::write_row(uchar *buf) {
                             &my_charset_bin);
           (*field)->val_str(&attribute);
           capnp::DynamicValue::Reader r(attribute.ptr());
-          row.set((*field)->field_name, r);
+          row.set(capnpFieldName, r);
           break;
         }
       }
