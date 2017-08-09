@@ -516,20 +516,20 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   they are needed to function.
 */
 
-std::unique_ptr<crunch_share> crunch::get_share()
+crunch_share* crunch::get_share()
 {
-  std::unique_ptr<crunch_share> tmp_share;
+  crunch_share* tmp_share;
 
   DBUG_ENTER("crunch::get_share()");
 
   lock_shared_ha_data();
-  if (!(tmp_share= std::unique_ptr<crunch_share>(static_cast<crunch_share*>(get_ha_share_ptr()))))
+  if (!(tmp_share= static_cast<crunch_share*>(get_ha_share_ptr())))
   {
-    tmp_share= std::unique_ptr<crunch_share>(new crunch_share);
+    tmp_share= new crunch_share;
     if (!tmp_share)
       goto err;
 
-    set_ha_share_ptr(static_cast<Handler_share*>(tmp_share.get()));
+    set_ha_share_ptr(static_cast<Handler_share*>(tmp_share));
   }
   err:
   unlock_shared_ha_data();

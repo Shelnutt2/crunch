@@ -111,8 +111,8 @@ private:
     bool mremapData();
 
     THR_LOCK_DATA lock;      ///< MySQL lock
-    std::unique_ptr<crunch_share> share;    ///< Shared lock info
-    std::unique_ptr<crunch_share> get_share(); ///< Get the share
+    crunch_share* share;    ///< Shared lock info
+    crunch_share* get_share(); ///< Get the share
 
     ::capnp::ParsedSchema capnpParsedSchema;
     ::capnp::StructSchema capnpRowSchema;
