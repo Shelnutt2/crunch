@@ -367,7 +367,9 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
-  DBUG_RETURN(0);
+  // TODO: Look into HA_REC_NOT_IN_SEQ
+  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_TABLE_SCAN_ON_INDEX | HA_NO_BLOBS | HA_CAN_SQL_HANDLER
+  | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 
 /** Store lock as requested by mariadb
