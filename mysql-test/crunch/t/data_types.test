@@ -94,13 +94,13 @@ DROP TABLE t1;
 CREATE TABLE t1 (
   column1 char
 ) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
+INSERT INTO t1 VALUES ("t");
 select * FROM t1;
 DROP TABLE t1;
 
 --echo # VARCHAR
 CREATE TABLE t1 (
-  column1 varchar
+  column1 varchar(255)
 ) ENGINE=crunch;
 INSERT INTO t1 VALUES ("test");
 select * FROM t1;
@@ -110,7 +110,7 @@ DROP TABLE t1;
 CREATE TABLE t1 (
   column1 binary
 ) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
+INSERT INTO t1 VALUES ("t");
 select * FROM t1;
 DROP TABLE t1;
 
