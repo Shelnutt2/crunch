@@ -1,0 +1,175 @@
+#
+# The purpose of this test is to build a table of each supported data type
+#
+
+# INTEGER
+CREATE TABLE t1 (
+  column1 integer
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# DOUBLE
+CREATE TABLE t1 (
+  column1 double
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+column1
+1.1
+DROP TABLE t1;
+# DECIMAL
+CREATE TABLE t1 (
+  column1 decimal(10,3)
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+column1
+1.1
+DROP TABLE t1;
+# FLOAT
+CREATE TABLE t1 (
+  column1 float
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+column1
+1.1
+DROP TABLE t1;
+# TINYINT
+CREATE TABLE t1 (
+  column1 tinyint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# BOOL
+CREATE TABLE t1 (
+  column1 bool
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# SMALLINT
+CREATE TABLE t1 (
+  column1 smallint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# YEAR
+CREATE TABLE t1 (
+  column1 year
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# MEDIUMINT
+CREATE TABLE t1 (
+  column1 mediumint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# BIGINT
+CREATE TABLE t1 (
+  column1 bigint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# BIT
+CREATE TABLE t1 (
+  column1 bit
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+DROP TABLE t1;
+# CHAR
+CREATE TABLE t1 (
+  column1 char
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# VARCHAR
+CREATE TABLE t1 (
+  column1 varchar
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# BINARY
+CREATE TABLE t1 (
+  column1 binary
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# TINYTEXT
+CREATE TABLE t1 (
+  column1 tinytext
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# TEXT
+CREATE TABLE t1 (
+  column1 text
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# MEDIUMTEXT
+CREATE TABLE t1 (
+  column1 mediumtext
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# LONGTEXT
+CREATE TABLE t1 (
+  column1 longtext
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# ENUM
+CREATE TABLE t1 (
+  column1 enum('test')
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
