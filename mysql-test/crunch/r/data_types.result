@@ -65,15 +65,6 @@ select * FROM t1;
 column1
 1
 DROP TABLE t1;
-# YEAR
-CREATE TABLE t1 (
-  column1 year
-) ENGINE=crunch;
-INSERT INTO t1 VALUES (1);
-select * FROM t1;
-column1
-1
-DROP TABLE t1;
 # MEDIUMINT
 CREATE TABLE t1 (
   column1 mediumint

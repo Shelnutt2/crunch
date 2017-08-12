@@ -263,7 +263,7 @@ int crunch::write_row(uchar *buf) {
 
         case MYSQL_TYPE_TINY:
         case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_YEAR:
+        //case MYSQL_TYPE_YEAR:
         case MYSQL_TYPE_INT24:
         case MYSQL_TYPE_LONG:
         case MYSQL_TYPE_LONGLONG: {
