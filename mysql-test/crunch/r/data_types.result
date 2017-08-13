@@ -82,15 +82,6 @@ select * FROM t1;
 column1
 1
 DROP TABLE t1;
-# BIT
-CREATE TABLE t1 (
-column1 bit
-) ENGINE=crunch;
-INSERT INTO t1 VALUES (1);
-select * FROM t1;
-column1
-1
-DROP TABLE t1;
 # CHAR
 CREATE TABLE t1 (
 column1 char
@@ -117,42 +108,6 @@ INSERT INTO t1 VALUES ("t");
 select * FROM t1;
 column1
 t
-DROP TABLE t1;
-# TINYTEXT
-CREATE TABLE t1 (
-column1 tinytext
-) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
-select * FROM t1;
-column1
-test
-DROP TABLE t1;
-# TEXT
-CREATE TABLE t1 (
-column1 text
-) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
-select * FROM t1;
-column1
-test
-DROP TABLE t1;
-# MEDIUMTEXT
-CREATE TABLE t1 (
-column1 mediumtext
-) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
-select * FROM t1;
-column1
-test
-DROP TABLE t1;
-# LONGTEXT
-CREATE TABLE t1 (
-column1 longtext
-) ENGINE=crunch;
-INSERT INTO t1 VALUES ("test");
-select * FROM t1;
-column1
-test
 DROP TABLE t1;
 # ENUM
 CREATE TABLE t1 (

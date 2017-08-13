@@ -276,10 +276,10 @@ int crunch::write_row(uchar *buf) {
           break;
         }
 
-        case MYSQL_TYPE_BIT: {
-          row.set(capnpFieldName, (*field)->val_bool());
+        /*case MYSQL_TYPE_BIT: {
+          row.set(capnpFieldName, (*field)->val_int());
           break;
-        }
+        }*/
 
         case MYSQL_TYPE_VARCHAR:
         case MYSQL_TYPE_STRING:
