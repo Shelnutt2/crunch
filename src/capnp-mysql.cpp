@@ -53,9 +53,10 @@ std::string getCapnpTypeFromField(Field *field) {
       return "Float32";
 
     case MYSQL_TYPE_TINY:
+      return "Int8";
     case MYSQL_TYPE_SHORT:
     case MYSQL_TYPE_YEAR:
-      return "Int8";
+      return "Int16";
 
     case MYSQL_TYPE_INT24:
       return "Int32";

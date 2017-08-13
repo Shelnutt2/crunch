@@ -82,6 +82,15 @@ select * FROM t1;
 column1
 1
 DROP TABLE t1;
+# YEAR
+CREATE TABLE t1 (
+column1 year
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (2017);
+select * FROM t1;
+column1
+2017
+DROP TABLE t1;
 # CHAR
 CREATE TABLE t1 (
 column1 char
