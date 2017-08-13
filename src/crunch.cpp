@@ -141,10 +141,10 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
           (*field)->store(capnpField.as<bool>());
           break;
         case capnp::DynamicValue::INT:
-          (*field)->store(capnpField.as<int64_t>(), 0);
+          (*field)->store(capnpField.as<int64_t>(), false);
           break;
         case capnp::DynamicValue::UINT:
-          (*field)->store(capnpField.as<uint64_t>());
+          (*field)->store(capnpField.as<uint64_t>(), true);
           break;
         case capnp::DynamicValue::FLOAT:
           (*field)->store(capnpField.as<double>());
@@ -276,10 +276,10 @@ int crunch::write_row(uchar *buf) {
           break;
         }
 
-        /*case MYSQL_TYPE_BIT: {
+        case MYSQL_TYPE_BIT: {
           row.set(capnpFieldName, (*field)->val_int());
           break;
-        }*/
+        }
 
         case MYSQL_TYPE_VARCHAR:
         case MYSQL_TYPE_STRING:
