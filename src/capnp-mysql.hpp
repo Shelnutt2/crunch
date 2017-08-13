@@ -20,6 +20,34 @@
 
 #define NULL_COLUMN_FIELD "nullColumns"
 
+#define ST_MYSQL_TIME_CAPNP "\
+struct stMysqlTimeCapnp {\
+    year @0 :Uint32;\
+    month @1 :Uint32;\
+    day @2 :Uint32;\
+    hour @3 :Uint32;\
+    minute @4 :Uint32;\
+    second @5 :Uint32;\
+    second_part @6 :UInt64;\
+    time_type @7 :enumMysqlTimestampType\
+\
+    enum enumMysqlTimestampType {\
+        MysqlTimestampNone @0;\
+        MysqlTimestampError @1;\
+        MysqlTimestampDate @2;\
+        MysqlTimestampDatetime @3;\
+        MysqlTimestampTime @4;\
+    };\
+}"
+
+typedef struct st_mysql_time
+{
+    unsigned int  year, month, day, hour, minute, second;
+    unsigned long second_part;
+    my_bool       neg;
+    enum enum_mysql_timestamp_type time_type;
+} MYSQL_TIME;
+
 uint64_t generateRandomId();
 
 

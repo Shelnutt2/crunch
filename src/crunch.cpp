@@ -298,7 +298,15 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_LONG_BLOB:
         case MYSQL_TYPE_MEDIUM_BLOB:
         case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_ENUM:
+        case MYSQL_TYPE_ENUM:  {
+          char attribute_buffer[1024];
+          String attribute(attribute_buffer, sizeof(attribute_buffer),
+                           &my_charset_bin);
+          (*field)->val_str(&attribute);
+          capnp::DynamicValue::Reader r(attribute.ptr());
+          row.set(capnpFieldName, r);
+          break;
+        }
         case MYSQL_TYPE_DATE:
         case MYSQL_TYPE_DATETIME:
         case MYSQL_TYPE_DATETIME2:
@@ -307,11 +315,7 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_TIMESTAMP:
         case MYSQL_TYPE_TIMESTAMP2:
         case MYSQL_TYPE_NEWDATE: {
-          char attribute_buffer[1024];
-          String attribute(attribute_buffer, sizeof(attribute_buffer),
-                            &my_charset_bin);
-          (*field)->val_str(&attribute);
-          capnp::DynamicValue::Reader r(attribute.ptr());
+          capnp::DynamicValue::Reader r((*field)->val_int());
           row.set(capnpFieldName, r);
           break;
         }

@@ -84,6 +84,7 @@ std::string getCapnpTypeFromField(Field *field) {
     case MYSQL_TYPE_MEDIUM_BLOB:
     case MYSQL_TYPE_TINY_BLOB:
     case MYSQL_TYPE_ENUM:
+      return "Data";
     case MYSQL_TYPE_DATE:
     case MYSQL_TYPE_DATETIME:
     case MYSQL_TYPE_DATETIME2:
@@ -92,10 +93,29 @@ std::string getCapnpTypeFromField(Field *field) {
     case MYSQL_TYPE_TIMESTAMP:
     case MYSQL_TYPE_TIMESTAMP2:
     case MYSQL_TYPE_NEWDATE:
-      return "Data";
+      return "stMysqlTimeCapnp";
   }
 
   return "Unknown";
+}
+
+bool isDateTimeField(Field *field) {
+  switch (field->type()) {
+
+    case MYSQL_TYPE_DATE:
+    case MYSQL_TYPE_DATETIME:
+    case MYSQL_TYPE_DATETIME2:
+    case MYSQL_TYPE_TIME:
+    case MYSQL_TYPE_TIME2:
+    case MYSQL_TYPE_TIMESTAMP:
+    case MYSQL_TYPE_TIMESTAMP2:
+    case MYSQL_TYPE_NEWDATE:
+      return true;
+    default:
+      return true;
+  }
+
+  return true;
 }
 
 /** Built a string of a cap'n proto structure from mysql fields list
@@ -114,13 +134,19 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
   std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
   output += "struct " + structName + " {\n";
 
+  bool hasDateTime = false;
+
   output += std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   for (Field **field = fields; *field; field++)
   {
+    if(isDateTimeField(*field))
+      hasDateTime = true;
     output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
 
   }
 
+  if(hasDateTime)
+    output += ST_MYSQL_TIME_CAPNP;
   output += "}";
 
   return output;
