@@ -1,0 +1,115 @@
+--echo #
+--echo # The purpose of this test is to build a table of each supported data type
+--echo #
+
+--echo # INTEGER
+CREATE TABLE t1 (
+  column1 integer
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # DOUBLE
+CREATE TABLE t1 (
+  column1 double
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # DECIMAL
+CREATE TABLE t1 (
+  column1 decimal(10,3)
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # FLOAT
+CREATE TABLE t1 (
+  column1 float
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1.1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # TINYINT
+CREATE TABLE t1 (
+  column1 tinyint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # BOOL
+CREATE TABLE t1 (
+  column1 bool
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # SMALLINT
+CREATE TABLE t1 (
+  column1 smallint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+#--echo # YEAR
+#CREATE TABLE t1 (
+#  column1 year
+#) ENGINE=crunch;
+#INSERT INTO t1 VALUES (1);
+#select * FROM t1;
+#DROP TABLE t1;
+
+--echo # MEDIUMINT
+CREATE TABLE t1 (
+  column1 mediumint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # BIGINT
+CREATE TABLE t1 (
+  column1 bigint
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # CHAR
+CREATE TABLE t1 (
+  column1 char
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("t");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # VARCHAR
+CREATE TABLE t1 (
+  column1 varchar(255)
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # BINARY
+CREATE TABLE t1 (
+  column1 binary
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("t");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # ENUM
+CREATE TABLE t1 (
+  column1 enum('test')
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
