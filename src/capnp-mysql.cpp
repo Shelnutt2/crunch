@@ -69,7 +69,7 @@ std::string getCapnpTypeFromField(Field *field) {
       return "Void";
 
     case MYSQL_TYPE_BIT:
-      return "Bool";
+      return "UInt16";
 
 
     case MYSQL_TYPE_VARCHAR :

@@ -91,6 +91,15 @@ select * FROM t1;
 column1
 2017
 DROP TABLE t1;
+# BIT
+CREATE TABLE t1 (
+column1 bit
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select column1+0 FROM t1;
+column1+0
+1
+DROP TABLE t1;
 # CHAR
 CREATE TABLE t1 (
 column1 char
