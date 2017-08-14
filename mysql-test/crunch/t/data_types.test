@@ -177,3 +177,68 @@ CREATE TABLE t1 (
 INSERT INTO t1 VALUES ("2017-08-13 00:00:00.000000");
 select * FROM t1;
 DROP TABLE t1;
+
+--echo # TINYTEXT
+CREATE TABLE t1 (
+  column1 TINYTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # TEXT
+CREATE TABLE t1 (
+  column1 TEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # MEDIUMTEXT
+CREATE TABLE t1 (
+  column1 MEDIUMTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # LONGTEXT
+CREATE TABLE t1 (
+  column1 LONGTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # TINYBLOB
+CREATE TABLE t1 (
+  column1 TINYBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # BLOB
+CREATE TABLE t1 (
+  column1 BLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # MEDIUMBLOB
+CREATE TABLE t1 (
+  column1 MEDIUMBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+DROP TABLE t1;
+
+--echo # LONGBLOB
+CREATE TABLE t1 (
+  column1 LONGBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+DROP TABLE t1;
+

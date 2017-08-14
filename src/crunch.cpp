@@ -149,12 +149,17 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
         case capnp::DynamicValue::FLOAT:
           (*field)->store(capnpField.as<double>());
           break;
+        case capnp::DynamicValue::DATA: {
+          kj::ArrayPtr<const char> chars;
+          chars = capnpField.as<capnp::Data>().asChars();
+          (*field)->store(chars.begin(), chars.size(), &my_charset_utf8_general_ci);
+          break;
+        }
         case capnp::DynamicValue::TEXT: {
           const char *row_string = capnpField.as<capnp::Text>().cStr();
           (*field)->store(row_string, strlen(row_string), &my_charset_utf8_general_ci);
           break;
         }
-        case capnp::DynamicValue::DATA:
         case capnp::DynamicValue::LIST:
         case capnp::DynamicValue::ENUM:
         case capnp::DynamicValue::STRUCT:
@@ -289,7 +294,8 @@ int crunch::write_row(uchar *buf) {
           String attribute(attribute_buffer, sizeof(attribute_buffer),
                            &my_charset_utf8_general_ci);
           (*field)->val_str(&attribute, &attribute);
-          row.set(capnpFieldName, attribute.c_ptr());
+          capnp::Text::Reader text = attribute.c_ptr_safe();
+          row.set(capnpFieldName, text);
           break;
         }
 
@@ -301,10 +307,10 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_ENUM:  {
           char attribute_buffer[1024];
           String attribute(attribute_buffer, sizeof(attribute_buffer),
-                           &my_charset_bin);
-          (*field)->val_str(&attribute);
-          capnp::DynamicValue::Reader r(attribute.ptr());
-          row.set(capnpFieldName, r);
+                           &my_charset_utf8_general_ci);
+          (*field)->val_str(&attribute, &attribute);
+          capnp::Text::Reader text = attribute.c_ptr_safe();
+          row.set(capnpFieldName, text);
           break;
         }
         case MYSQL_TYPE_DATE:
@@ -371,7 +377,7 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
   // TODO: Look into HA_REC_NOT_IN_SEQ
-  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_TABLE_SCAN_ON_INDEX | HA_NO_BLOBS | HA_CAN_SQL_HANDLER
+  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
   | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 
