@@ -190,3 +190,75 @@ select * FROM t1;
 column1
 2017-08-13 00:00:00.000000
 DROP TABLE t1;
+# TINYTEXT
+CREATE TABLE t1 (
+column1 TINYTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# TEXT
+CREATE TABLE t1 (
+column1 TEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# MEDIUMTEXT
+CREATE TABLE t1 (
+column1 MEDIUMTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# LONGTEXT
+CREATE TABLE t1 (
+column1 LONGTEXT
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ("test");
+select * FROM t1;
+column1
+test
+DROP TABLE t1;
+# TINYBLOB
+CREATE TABLE t1 (
+column1 TINYBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+column1
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+DROP TABLE t1;
+# BLOB
+CREATE TABLE t1 (
+column1 BLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+column1
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+DROP TABLE t1;
+# MEDIUMBLOB
+CREATE TABLE t1 (
+column1 MEDIUMBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+column1
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+DROP TABLE t1;
+# LONGBLOB
+CREATE TABLE t1 (
+column1 LONGBLOB
+) ENGINE=crunch;
+INSERT INTO t1 VALUES ('aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+select * FROM t1;
+column1
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+DROP TABLE t1;
