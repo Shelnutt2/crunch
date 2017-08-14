@@ -84,6 +84,7 @@ std::string getCapnpTypeFromField(Field *field) {
     case MYSQL_TYPE_MEDIUM_BLOB:
     case MYSQL_TYPE_TINY_BLOB:
     case MYSQL_TYPE_ENUM:
+      return "Data";
     case MYSQL_TYPE_DATE:
     case MYSQL_TYPE_DATETIME:
     case MYSQL_TYPE_DATETIME2:
@@ -92,7 +93,7 @@ std::string getCapnpTypeFromField(Field *field) {
     case MYSQL_TYPE_TIMESTAMP:
     case MYSQL_TYPE_TIMESTAMP2:
     case MYSQL_TYPE_NEWDATE:
-      return "Data";
+      return "Int64";
   }
 
   return "Unknown";
