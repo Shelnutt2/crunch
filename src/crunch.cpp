@@ -379,7 +379,7 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
   // TODO: Look into HA_REC_NOT_IN_SEQ
-  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
+  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
   | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 
