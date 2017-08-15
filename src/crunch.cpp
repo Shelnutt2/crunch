@@ -307,10 +307,12 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_ENUM:  {
           char attribute_buffer[1024];
           String attribute(attribute_buffer, sizeof(attribute_buffer),
-                           &my_charset_utf8_general_ci);
+                           &my_charset_bin);
           (*field)->val_str(&attribute, &attribute);
-          capnp::Text::Reader text = attribute.c_ptr_safe();
-          row.set(capnpFieldName, text);
+
+          kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(), attribute.length()).asBytes();
+          capnp::Data::Reader data(bufferPtr.begin(), bufferPtr.size());
+          row.set(capnpFieldName, data);
           break;
         }
         case MYSQL_TYPE_DATE:
@@ -377,7 +379,7 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
   // TODO: Look into HA_REC_NOT_IN_SEQ
-  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
+  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
   | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 
