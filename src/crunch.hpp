@@ -66,8 +66,11 @@ class crunch : public handler {
     int rnd_next(uchar *buf);
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
+    void build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls);
+    int write(uchar *buf);
     int write_row(uchar *buf);
     int delete_row(const uchar *buf);
+    int update_row(const uchar *old_data, uchar *new_data);
     void position(const uchar *record);
     int info(uint);
     ulong index_flags(uint idx, uint part, bool all_parts) const;
