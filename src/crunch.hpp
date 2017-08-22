@@ -71,6 +71,7 @@ class crunch : public handler {
     int close(void);
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
+    int delete_table(const char *name);
 
     static inline bool
     row_is_fixed_length(TABLE *table)

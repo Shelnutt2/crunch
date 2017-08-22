@@ -428,9 +428,11 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #endif
 
   // Build file names for ondisk
-  tableName = name;
-  schemaFile = tableName +  TABLE_SCHEME_EXTENSION;
-  dataFile = tableName +  TABLE_DATA_EXTENSION;
+  std::string filePath = name + std::string("/") + table->s->table_name.str;
+  DBUG_PRINT("info", ("Open for table: %s", filePath));
+  //tableName = name;
+  schemaFile = filePath +  TABLE_SCHEME_EXTENSION;
+  dataFile = filePath +  TABLE_DATA_EXTENSION;
   schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
   dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
 
@@ -495,13 +497,15 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
+  createDirectory(name);
   // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
   std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err);
 
+  std::string filePath = name + std::string("/") + table_arg->s->table_name.str;
   // Let mysql create the file for us
-  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_SCHEME_EXTENSION,
+  if ((create_file= my_create(fn_format(name_buff, filePath.c_str(), "", TABLE_SCHEME_EXTENSION,
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);
@@ -511,13 +515,21 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   my_close(create_file,MYF(0));
 
   // Create initial data file
-  if ((create_file= my_create(fn_format(name_buff, name, "", TABLE_DATA_EXTENSION,
+  if ((create_file= my_create(fn_format(name_buff, filePath.c_str(), "", TABLE_DATA_EXTENSION,
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);
 
   my_close(create_file,MYF(0));
 
+  DBUG_RETURN(0);
+}
+
+int crunch::delete_table(const char *name)
+{
+  DBUG_ENTER("crunch::delete_table");
+  DBUG_PRINT("info", ("Delete for table: %s", name));
+  remove_directory(name);
   DBUG_RETURN(0);
 }
 
