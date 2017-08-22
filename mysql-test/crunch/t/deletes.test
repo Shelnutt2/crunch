@@ -1,0 +1,14 @@
+--echo #
+--echo # The purpose of this test is to build a table and test deletes
+--echo #
+
+--echo # INTEGER
+CREATE TABLE t1 (
+  column1 integer
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+INSERT INTO t1 VALUES (2);
+select * FROM t1;
+DELETE FROM t1 WHERE column1 = 1;
+select * from t1;
+DROP TABLE t1;

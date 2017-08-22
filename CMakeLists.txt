@@ -7,7 +7,7 @@ project(crunch)
 
 set(CMAKE_CXX_STANDARD 14)
 
-file(GLOB SOURCE_FILES src/*.cpp capnp-mysql.cpp)
+file(GLOB SOURCE_FILES src/*.cpp crunchdelete.capnp.c++)
 
 IF(CRUNCH_COMPILE_STANDALONE)
 

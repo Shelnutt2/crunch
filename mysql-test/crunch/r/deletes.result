@@ -1,0 +1,18 @@
+#
+# The purpose of this test is to build a table and test deletes
+#
+# INTEGER
+CREATE TABLE t1 (
+column1 integer
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+INSERT INTO t1 VALUES (2);
+select * FROM t1;
+column1
+1
+2
+DELETE FROM t1 WHERE column1 = 1;
+select * from t1;
+column1
+2
+DROP TABLE t1;

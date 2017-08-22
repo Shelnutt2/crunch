@@ -1,6 +1,7 @@
-//
-// Created by seth on 7/6/17.
-//
+/*
+** Licensed under the GNU Lesser General Public License v3 or later
+*/
+
 
 #include <string>
 #include <unordered_map>
@@ -115,7 +116,7 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
   std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
   output += "struct " + structName + " {\n";
 
-  output += std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
+  output += "  " + std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   for (Field **field = fields; *field; field++)
   {
     output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
