@@ -1,6 +1,7 @@
-//
-// Created by seth on 7/6/17.
-//
+/*
+** Licensed under the GNU Lesser General Public License v3 or later
+*/
+
 
 #ifndef CAPNP_MYSQL_HPP
 #define CAPNP_MYSQL_HPP

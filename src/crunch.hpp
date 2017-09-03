@@ -13,6 +13,8 @@
 #include <field.h>               /* field */
 #include <my_base.h>             /* ha_rows */
 #include <memory>                /* unique_ptr */
+#include <cstdint>               /* uint64_t */
+#include <unordered_map> /*Unordered map*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
 #include <capnp/schema-parser.h> /* Cap'n Proto SchemaParser */
@@ -20,8 +22,11 @@
 #include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
+#include "crunchdeleterow.capnp.h"
+
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_DATA_EXTENSION ".capnpd"
+#define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -62,6 +67,7 @@ class crunch : public handler {
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
     int write_row(uchar *buf);
+    int delete_row(const uchar *buf);
     void position(const uchar *record);
     int info(uint);
     ulong index_flags(uint idx, uint part, bool all_parts) const;
@@ -71,6 +77,10 @@ class crunch : public handler {
     int close(void);
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
+    int delete_table(const char *name);
+    int readDeletesIntoMap(FILE* deleteFilePointer);
+    bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
+    void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
 
     static inline bool
     row_is_fixed_length(TABLE *table)
@@ -118,13 +128,16 @@ private:
     ::capnp::StructSchema capnpRowSchema;
     ::capnp::SchemaParser parser;
 
-    std::string tableName;
+    std::string baseFilePath;
+    std::string folderName;
     std::string schemaFile;
     std::string dataFile;
+    std::string deleteFile;
     int schemaFileDescriptor;
     int dataFileDescriptor;
+    FILE* deleteFilePointer;
+    //int deleteFileDescriptor;
     int dataFileSize;
-    int sizeOfSingleRow;
 
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
@@ -133,7 +146,10 @@ private:
     int records;
     int numFields;
     const capnp::word *dataPointer;
+    const capnp::word *dataPointerNext;
     const capnp::word *dataFileStart;
+
+    std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchDeleteRow::Reader>>> deleteMap;
 };
 
 
