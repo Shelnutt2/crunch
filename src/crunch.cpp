@@ -180,6 +180,7 @@ int crunch::rnd_init(bool scan) {
   dataPointerNext = dataFileStart;
   DBUG_RETURN(0);
 }
+
 int crunch::rnd_next(uchar *buf) {
   int rc = 0;
   DBUG_ENTER("crunch::rnd_next");
@@ -195,7 +196,6 @@ int crunch::rnd_next(uchar *buf) {
     //Read data
     auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
     dataPointerNext = tmpDataMessageReader->getEnd();
-
     uint64_t rowStartLocation = (dataFileStart - dataPointer);
     if(!checkForDeletedRow(dataFile, rowStartLocation)) {
       dataMessageReader = std::move(tmpDataMessageReader);
@@ -230,45 +230,30 @@ int crunch::rnd_end() {
   DBUG_RETURN(0);
 }
 
-int crunch::write_row(uchar *buf) {
-
-  DBUG_ENTER("crunch::write_row");
-  // Lock basic mutex
-  mysql_mutex_lock(&share->mutex);
-  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
-  my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
-
-  // Use a message builder for reach row
-  capnp::MallocMessageBuilder tableRow;
-
-  // Use stored structure
-  capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
-
-  capnp::DynamicList::Builder nulls =  row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
-
+void crunch::build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls) {
   // Loop through each field to write row
 
   int index = 0;
   for (Field **field=table->field ; *field ; field++) {
     std::string capnpFieldName = camelCase((*field)->field_name);
     if ((*field)->is_null()) {
-      nulls.set(index++, true);
+      nulls->set(index++, true);
     } else {
-      nulls.set(index++, false);
+      nulls->set(index++, false);
       switch ((*field)->type()) {
 
         case MYSQL_TYPE_DOUBLE:{
-          row.set(capnpFieldName, (*field)->val_real());
+          row->set(capnpFieldName, (*field)->val_real());
           break;
         }
         case MYSQL_TYPE_DECIMAL:
         case MYSQL_TYPE_NEWDECIMAL: {
-          row.set(capnpFieldName, (*field)->val_real());
+          row->set(capnpFieldName, (*field)->val_real());
           break;
         }
 
         case MYSQL_TYPE_FLOAT: {
-          row.set(capnpFieldName, (*field)->val_real());
+          row->set(capnpFieldName, (*field)->val_real());
           break;
         }
 
@@ -278,17 +263,17 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_INT24:
         case MYSQL_TYPE_LONG:
         case MYSQL_TYPE_LONGLONG: {
-          row.set(capnpFieldName, (*field)->val_int());
+          row->set(capnpFieldName, (*field)->val_int());
           break;
         }
 
         case MYSQL_TYPE_NULL: {
-          row.set(capnpFieldName, capnp::DynamicValue::VOID);
+          row->set(capnpFieldName, capnp::DynamicValue::VOID);
           break;
         }
 
         case MYSQL_TYPE_BIT: {
-          row.set(capnpFieldName, (*field)->val_int());
+          row->set(capnpFieldName, (*field)->val_int());
           break;
         }
 
@@ -301,7 +286,7 @@ int crunch::write_row(uchar *buf) {
                            &my_charset_utf8_general_ci);
           (*field)->val_str(&attribute, &attribute);
           capnp::Text::Reader text = attribute.c_ptr_safe();
-          row.set(capnpFieldName, text);
+          row->set(capnpFieldName, text);
           break;
         }
 
@@ -318,7 +303,7 @@ int crunch::write_row(uchar *buf) {
 
           kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(), attribute.length()).asBytes();
           capnp::Data::Reader data(bufferPtr.begin(), bufferPtr.size());
-          row.set(capnpFieldName, data);
+          row->set(capnpFieldName, data);
           break;
         }
         case MYSQL_TYPE_DATE:
@@ -329,12 +314,27 @@ int crunch::write_row(uchar *buf) {
         case MYSQL_TYPE_TIMESTAMP:
         case MYSQL_TYPE_TIMESTAMP2:
         case MYSQL_TYPE_NEWDATE: {
-          row.set(capnpFieldName, (*field)->val_int());
+          row->set(capnpFieldName, (*field)->val_int());
           break;
         }
       }
     }
   }
+}
+
+int crunch::write(uchar *buf) {
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
+
+  // Use a message builder for reach row
+  capnp::MallocMessageBuilder tableRow;
+
+  // Use stored structure
+  capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
+
+  capnp::DynamicList::Builder nulls =  row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
+
+  build_row(&row, &nulls);
 
   // Set the fileDescriptor to the end of the file
   lseek(dataFileDescriptor, 0, SEEK_END);
@@ -344,16 +344,25 @@ int crunch::write_row(uchar *buf) {
   // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
   if(!mremapData()) {
     std::cerr << "Could not mremap data file after writing row" << std::endl;
-    DBUG_RETURN(-1);
+   return -1;
   }
 
 
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->read_set, old_map);
+  return 0;
+}
 
+int crunch::write_row(uchar *buf) {
+
+  DBUG_ENTER("crunch::write_row");
+  // Lock basic mutex
+  mysql_mutex_lock(&share->mutex);
+
+  int ret = write(buf);
   // Unlock basic mutex
   mysql_mutex_unlock(&share->mutex);
-  DBUG_RETURN(0);
+  DBUG_RETURN(ret);
 }
 
 int crunch::delete_row(const uchar *buf) {
@@ -367,6 +376,23 @@ int crunch::delete_row(const uchar *buf) {
   markRowAsDeleted(dataFile, rowStartLocation, rowEndLocation);
 
   DBUG_RETURN(0);
+}
+
+/**
+ * Update row by deleting old row and inserting new data
+ * @param old_data
+ * @param new_data
+ * @return
+ */
+int crunch::update_row(const uchar *old_data, uchar *new_data) {
+  DBUG_ENTER("crunch::update_row");
+  // Try to delete row
+  int ret = delete_row(old_data);
+  if(ret)
+    DBUG_RETURN(ret);
+  // If delete was successful, write new row
+  ret = write(new_data);
+  DBUG_RETURN(ret);
 }
 
 void crunch::position(const uchar *record) {
@@ -540,7 +566,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
     DBUG_RETURN(-1);
 
   // Write the capnp schema to schema file
-  write(create_file, capnpSchema.c_str(), capnpSchema.length());
+  ::write(create_file, capnpSchema.c_str(), capnpSchema.length());
   my_close(create_file,MYF(0));
 
   // Create initial data file

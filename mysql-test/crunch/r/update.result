@@ -1,0 +1,16 @@
+#
+# The purpose of this test is to run update
+#
+# INTEGER
+CREATE TABLE t1 (
+column1 integer
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+select * FROM t1;
+column1
+1
+UPDATE t1 SET column1 = 2 WHERE column1 = 1;
+select * FROM t1;
+column1
+2
+DROP TABLE t1;
