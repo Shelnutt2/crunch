@@ -174,7 +174,7 @@ int crunch::rnd_init(bool scan) {
   // Lock basic mutex
   mysql_mutex_lock(&share->mutex);
   // Reset row number
-  currentRowNumber = -1;
+  //currentRowNumber = -1;
   // Reset starting mmap position
   dataPointer = dataFileStart;
   dataPointerNext = dataFileStart;
@@ -196,10 +196,10 @@ int crunch::rnd_next(uchar *buf) {
     //Read data
     auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
     dataPointerNext = tmpDataMessageReader->getEnd();
-    uint64_t rowStartLocation = (dataFileStart - dataPointer);
+    uint64_t rowStartLocation = (dataPointer - dataFileStart);
     if(!checkForDeletedRow(dataFile, rowStartLocation)) {
       dataMessageReader = std::move(tmpDataMessageReader);
-      currentRowNumber++;
+      //currentRowNumber++;
 
       capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
     } else {
@@ -219,7 +219,23 @@ int crunch::rnd_next(uchar *buf) {
 int crunch::rnd_pos(uchar * buf, uchar *pos) {
   int rc = 0;
   DBUG_ENTER("crunch::rnd_pos");
-  rc= HA_ERR_WRONG_COMMAND;
+
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
+
+  my_off_t rowStartLocation = my_get_ptr(pos, ref_length);
+  dataPointer = dataFileStart + rowStartLocation;
+  if(!checkForDeletedRow(dataFile, rowStartLocation)) {
+    auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
+    dataMessageReader = std::move(tmpDataMessageReader);
+
+    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+  } else {
+    rc = HA_ERR_RECORD_DELETED;
+  }
+
+  // Reset bitmap to original
+  dbug_tmp_restore_column_map(table->write_set, orig);
   DBUG_RETURN(rc);
 }
 
@@ -371,8 +387,8 @@ int crunch::delete_row(const uchar *buf) {
   //todo: check for if delete file exists
   //use crunch-delete to handle all logic, just call crunch_delete(current_row_message, offset start, end)
   //crunch-delete will create file if not exists and serialize with capnproto
-  uint64_t rowStartLocation = (dataFileStart - dataPointer);
-  uint64_t rowEndLocation = (dataFileStart - dataPointerNext);
+  uint64_t rowStartLocation = (dataPointer - dataFileStart);
+  uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
   markRowAsDeleted(dataFile, rowStartLocation, rowEndLocation);
 
   DBUG_RETURN(0);
@@ -395,8 +411,20 @@ int crunch::update_row(const uchar *old_data, uchar *new_data) {
   DBUG_RETURN(ret);
 }
 
+/**
+ * In the case of an order by rows will need to be sorted.
+  ::position() is called after each call to ::rnd_next(),
+  the data it stores is to a byte array. You can store this
+  data via my_store_ptr(). ref_length is a variable defined to the
+  class that is the sizeof() of position being stored.
+
+ * @param record
+ */
 void crunch::position(const uchar *record) {
   DBUG_ENTER("crunch::position");
+  my_off_t rowStartLocation = (dataPointer - dataFileStart);
+  my_store_ptr(ref, ref_length, rowStartLocation);
+  DBUG_VOID_RETURN;
 }
 
 int crunch::info(uint) {
@@ -423,8 +451,7 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
-  // TODO: Look into HA_REC_NOT_IN_SEQ
-  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
+  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_REC_NOT_IN_SEQ | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
   | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 

@@ -14,6 +14,7 @@
 #include <my_base.h>             /* ha_rows */
 #include <memory>                /* unique_ptr */
 #include <cstdint>               /* uint64_t */
+#include <string>                /* std::string */
 #include <unordered_map> /*Unordered map*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
@@ -60,7 +61,9 @@ public:
 
 class crunch : public handler {
   public:
-    crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){};
+    crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){
+      ref_length = sizeof(my_off_t);
+    };
     ~crunch() noexcept(true){};
     int rnd_init(bool scan);
     int rnd_next(uchar *buf);
@@ -145,7 +148,7 @@ private:
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
     // Position variables
-    int currentRowNumber;
+    //int currentRowNumber;
     int records;
     int numFields;
     const capnp::word *dataPointer;
