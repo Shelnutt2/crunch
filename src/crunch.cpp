@@ -221,19 +221,38 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
   DBUG_ENTER("crunch::rnd_pos");
 
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
-  my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
+  my_bitmap_map *orig = dbug_tmp_use_all_columns(table, table->write_set);
 
-  my_off_t rowStartLocation = my_get_ptr(pos, ref_length);
-  dataPointer = dataFileStart + rowStartLocation;
-  if(!checkForDeletedRow(dataFile, rowStartLocation)) {
-    auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
-    dataMessageReader = std::move(tmpDataMessageReader);
+  try {
+    uint64_t len;
+    memcpy(&len, pos, sizeof(uint64_t));
+    std::cerr << "len from pos is: " << len << std::endl;
+    kj::ArrayPtr<const unsigned char> bytes = kj::arrayPtr(pos+sizeof(uint64_t), len);
 
-    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
-  } else {
-    rc = HA_ERR_RECORD_DELETED;
-  }
+    const kj::ArrayPtr<const capnp::word> view{
+      reinterpret_cast<const capnp::word*>(bytes.begin()),
+      reinterpret_cast<const capnp::word*>(bytes.end())};
 
+    capnp::FlatArrayMessageReader message(view);
+    CrunchRowLocation::Reader rowLocation = message.getRoot<CrunchRowLocation>();
+    if (dataFile != std::string(rowLocation.getFileName().cStr())) {
+      //TODO: Handle different file.
+    }
+    dataPointer = dataFileStart + rowLocation.getRowStartLocation();
+    if (!checkForDeletedRow(dataFile, rowLocation.getRowStartLocation())) {
+      auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
+        kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
+      dataMessageReader = std::move(tmpDataMessageReader);
+
+      capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+    } else {
+      rc = HA_ERR_RECORD_DELETED;
+    }
+  } catch (kj::Exception e) {
+    std::cerr << "exception: " << e.getFile() << ", line: "
+              << e.getLine() << ", type: " << (int)e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+  };
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
   DBUG_RETURN(rc);
@@ -422,8 +441,26 @@ int crunch::update_row(const uchar *old_data, uchar *new_data) {
  */
 void crunch::position(const uchar *record) {
   DBUG_ENTER("crunch::position");
-  my_off_t rowStartLocation = (dataPointer - dataFileStart);
-  my_store_ptr(ref, ref_length, rowStartLocation);
+  try {
+
+    capnp::MallocMessageBuilder RowLocation;
+    CrunchRowLocation::Builder builder = RowLocation.initRoot<CrunchRowLocation>();
+
+    builder.setFileName(dataFile);
+    uint64_t rowStartLocation = (dataPointer - dataFileStart);
+    uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
+    builder.setRowEndLocation(rowEndLocation);
+    builder.setRowStartLocation(rowStartLocation);
+
+    kj::Array<capnp::word> flatArrayOfLocation = capnp::messageToFlatArray(RowLocation);
+    uint64_t len = flatArrayOfLocation.asBytes().size();
+    memcpy(ref, &len, sizeof(uint64_t));
+    memcpy(ref+sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
+  } catch (kj::Exception e) {
+    std::cerr << "exception: " << e.getFile() << ", line: "
+              << e.getLine() << ", type: " << (int)e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+  };
   DBUG_VOID_RETURN;
 }
 

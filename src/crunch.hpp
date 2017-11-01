@@ -62,7 +62,7 @@ public:
 class crunch : public handler {
   public:
     crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){
-      ref_length = sizeof(my_off_t);
+      ref_length = 100*sizeof(capnp::word);
     };
     ~crunch() noexcept(true){};
     int rnd_init(bool scan);
