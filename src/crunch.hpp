@@ -23,7 +23,7 @@
 #include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
-#include "crunchdeleterow.capnp.h"
+#include "crunchrowlocation.capnp.h"
 
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_DATA_EXTENSION ".capnpd"
@@ -155,7 +155,7 @@ private:
     const capnp::word *dataPointerNext;
     const capnp::word *dataFileStart;
 
-    std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchDeleteRow::Reader>>> deleteMap;
+    std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
 };
 
 

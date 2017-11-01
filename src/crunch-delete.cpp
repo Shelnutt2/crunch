@@ -2,7 +2,7 @@
 ** Licensed under the GNU Lesser General Public License v3 or later
 */
 
-#include "crunchdeleterow.capnp.h"
+#include "crunchrowlocation.capnp.h"
 #include <capnp/serialize.h>
 #include "crunch.hpp"
 #include <stdio.h>
@@ -17,14 +17,14 @@ int crunch::readDeletesIntoMap(FILE* deleteFilePointer) {
       while (!feof(deleteFilePointer)) {
         try {
         capnp::StreamFdMessageReader message(fileno(deleteFilePointer));
-        CrunchDeleteRow::Reader deletedRow = message.getRoot<CrunchDeleteRow>();
+        CrunchRowLocation::Reader deletedRow = message.getRoot<CrunchRowLocation>();
 
         auto fileMap = deleteMap.find(deletedRow.getFileName());
         if (fileMap != deleteMap.end()) {
           fileMap->second->emplace(deletedRow.getRowStartLocation(), deletedRow);
         } else { // New file!
-          std::shared_ptr<std::unordered_map<uint64_t, CrunchDeleteRow::Reader>> newFile = std::shared_ptr<std::unordered_map<uint64_t, CrunchDeleteRow::Reader>>(
-            new std::unordered_map<uint64_t, CrunchDeleteRow::Reader>());
+          std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>> newFile = std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>>(
+            new std::unordered_map<uint64_t, CrunchRowLocation::Reader>());
           newFile->emplace(deletedRow.getRowStartLocation(), deletedRow);
           deleteMap.emplace(deletedRow.getFileName(), newFile);
         }
@@ -53,7 +53,7 @@ bool crunch::checkForDeletedRow(std::string fileName, uint64_t rowStartLocation)
 void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation) {
 
   capnp::MallocMessageBuilder deleteRow;
-  CrunchDeleteRow::Builder builder = deleteRow.initRoot<CrunchDeleteRow>();
+  CrunchRowLocation::Builder builder = deleteRow.initRoot<CrunchRowLocation>();
   builder.setFileName(fileName);
   builder.setRowEndLocation(rowEndLocation);
   builder.setRowStartLocation(rowStartLocation);
@@ -62,7 +62,7 @@ void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, u
   if(fileMap != deleteMap.end()) {
     fileMap->second->emplace(rowStartLocation, builder);
   } else { // New file!
-    std::shared_ptr<std::unordered_map<uint64_t,CrunchDeleteRow::Reader>> newFile =  std::shared_ptr<std::unordered_map<uint64_t,CrunchDeleteRow::Reader>>(new std::unordered_map<uint64_t,CrunchDeleteRow::Reader>());
+    std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>> newFile =  std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>(new std::unordered_map<uint64_t,CrunchRowLocation::Reader>());
     newFile->emplace(rowStartLocation, builder);
     deleteMap.emplace(fileName, newFile);
   }
