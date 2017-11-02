@@ -14,6 +14,7 @@
 #include <my_base.h>             /* ha_rows */
 #include <memory>                /* unique_ptr */
 #include <cstdint>               /* uint64_t */
+#include <string>                /* std::string */
 #include <unordered_map> /*Unordered map*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
@@ -22,7 +23,7 @@
 #include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
-#include "crunchdeleterow.capnp.h"
+#include "crunchrowlocation.capnp.h"
 
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_DATA_EXTENSION ".capnpd"
@@ -60,7 +61,9 @@ public:
 
 class crunch : public handler {
   public:
-    crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){};
+    crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){
+      ref_length = 100*sizeof(capnp::word);
+    };
     ~crunch() noexcept(true){};
     int rnd_init(bool scan);
     int rnd_next(uchar *buf);
@@ -145,14 +148,14 @@ private:
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
     // Position variables
-    int currentRowNumber;
+    //int currentRowNumber;
     int records;
     int numFields;
     const capnp::word *dataPointer;
     const capnp::word *dataPointerNext;
     const capnp::word *dataFileStart;
 
-    std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchDeleteRow::Reader>>> deleteMap;
+    std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
 };
 
 
