@@ -6,6 +6,8 @@
 #ifndef CRUNCH_CRUNCH_HPP
 #define CRUNCH_CRUNCH_HPP
 
+#define MYSQL_SERVER 1 // required for THD class
+
 #include <my_global.h>           /* ulonglong */
 #include <thr_lock.h>            /* THR_LOCK, THR_LOCK_DATA */
 #include <handler.h>             /* handler */
@@ -28,6 +30,7 @@
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_DATA_EXTENSION ".capnpd"
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
+#define TABLE_TRANSACTION_DIRECTORY "transactions"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -87,6 +90,7 @@ class crunch : public handler {
     int readDeletesIntoMap(FILE* deleteFilePointer);
     bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
     void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
+    int start_stmt(THD *thd, thr_lock_type lock_type);
 
     static inline bool
     row_is_fixed_length(TABLE *table)
@@ -139,6 +143,7 @@ private:
     std::string schemaFile;
     std::string dataFile;
     std::string deleteFile;
+    std::string transactionDirectory;
     int schemaFileDescriptor;
     int dataFileDescriptor;
     FILE* deleteFilePointer;

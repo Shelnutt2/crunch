@@ -10,7 +10,14 @@
 #include "capnp-mysql.hpp"
 #include "utils.hpp"
 #include <sys/mman.h>
+#include <sql_priv.h>
+#include <sql_class.h>
 
+#include "crunch-txn.hpp"
+
+#ifdef UNKNOWN
+#undef UNKNOWN
+#endif
 
 // Handler for crunch engine
 handlerton *crunch_hton;
@@ -157,8 +164,8 @@ void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
         case capnp::DynamicValue::ENUM:
         case capnp::DynamicValue::STRUCT:
         case capnp::DynamicValue::CAPABILITY:
-        case capnp::DynamicValue::ANY_POINTER:
         case capnp::DynamicValue::UNKNOWN:
+        case capnp::DynamicValue::ANY_POINTER:
         break;
       }
     } else {
@@ -464,6 +471,24 @@ void crunch::position(const uchar *record) {
   DBUG_VOID_RETURN;
 }
 
+int crunch::start_stmt(THD *thd, thr_lock_type lock_type)
+{
+  DBUG_ENTER("crunch::start_stmt");
+  int ret= 0;
+
+  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
+  if (txn == NULL) {
+    txn= new crunchTxn();
+    thd_set_ha_data(thd, crunch_hton, txn);
+  }
+
+  if (txn->uuid.str().empty() && !(ret= txn->begin())) {
+    //txn->stmt= txn->new_savepoint();
+    trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
+  }
+  DBUG_RETURN(ret);
+}
+
 int crunch::info(uint) {
   DBUG_ENTER("crunch::info");
   /* This is a lie, but you don't want the optimizer to see zero or 1 */
@@ -488,7 +513,7 @@ ulong crunch::index_flags(uint idx, uint part, bool all_parts) const {
 
 ulonglong crunch::table_flags(void) const{
   DBUG_ENTER("crunch::table_flags");
-  DBUG_RETURN(HA_NO_TRANSACTIONS | HA_REC_NOT_IN_SEQ | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
+  DBUG_RETURN(HA_REC_NOT_IN_SEQ | HA_CAN_GEOMETRY | HA_TABLE_SCAN_ON_INDEX | HA_CAN_SQL_HANDLER
   | HA_CAN_BIT_FIELD | HA_FILE_BASED | HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE);
 };
 
@@ -514,10 +539,37 @@ THR_LOCK_DATA** crunch::store_lock(THD* thd, THR_LOCK_DATA** pTHRLockData, thr_l
  */
 int crunch::external_lock(THD *thd, int lock_type) {
   DBUG_ENTER("crunch::external_lock");
-  DBUG_RETURN(0);
+
+  int rc = 0;
+  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
+  if (txn == NULL) {
+    txn= new crunchTxn;
+    thd_set_ha_data(thd, crunch_hton, txn);
+  }
+
+  // If we are not unlocking
+  if (lock_type != F_UNLCK)
+  {
+    txn->tx_isolation= thd->tx_isolation;
+    /*if (txn->lock_count == 0) {
+      //txn->lock_count= 1;
+    }*/
+
+    if (txn->uuid.str().empty()) {
+      rc = txn->begin();
+      trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
+    }
+  }
+  else {
+    if (!txn->uuid.str().empty()) {
+      /* Commit the transaction if we're in auto-commit mode */
+      //this->Commit();//(thd, FALSE);
+    }
+  }
+  DBUG_RETURN(rc);
 }
 
-/** Open a table, currently does nothing, will mmap files in the future
+/** Open a table mmap files
  *
  * @param name
  * @param mode
@@ -536,8 +588,11 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   //DBUG_ASSERT(options);
 #endif
 
-  // Build file names for ondisk
   folderName = name;
+  //Loop through all files in directory of folder and find all files matching extension, add to maps
+  std::vector<std::string> files_in_directory = read_directory(folderName);
+
+  // Build file names for ondisk
   baseFilePath = name + std::string("/") + table->s->table_name.str;
   DBUG_PRINT("info", ("Open for table: %s", baseFilePath.c_str()));
   //tableName = name;
@@ -546,6 +601,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   deleteFile = baseFilePath + TABLE_DELETE_EXTENSION;
   schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
   dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
+  transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 
 
   // Catch errors from capnp or libkj
@@ -616,6 +672,8 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
   createDirectory(name);
+  transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
+  createDirectory(transactionDirectory);
   // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
