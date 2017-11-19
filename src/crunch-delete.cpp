@@ -16,21 +16,21 @@ int crunch::readDeletesIntoMap(FILE* deleteFilePointer) {
     if(size) {
       while (!feof(deleteFilePointer)) {
         try {
-        capnp::StreamFdMessageReader message(fileno(deleteFilePointer));
-        CrunchRowLocation::Reader deletedRow = message.getRoot<CrunchRowLocation>();
+          capnp::StreamFdMessageReader message(fileno(deleteFilePointer));
+          CrunchRowLocation::Reader deletedRow = message.getRoot<CrunchRowLocation>();
 
-        auto fileMap = deleteMap.find(deletedRow.getFileName());
-        if (fileMap != deleteMap.end()) {
-          fileMap->second->emplace(deletedRow.getRowStartLocation(), deletedRow);
-        } else { // New file!
-          std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>> newFile = std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>>(
-            new std::unordered_map<uint64_t, CrunchRowLocation::Reader>());
-          newFile->emplace(deletedRow.getRowStartLocation(), deletedRow);
-          deleteMap.emplace(deletedRow.getFileName(), newFile);
-        }
+          auto fileMap = deleteMap.find(deletedRow.getFileName());
+          if (fileMap != deleteMap.end()) {
+            fileMap->second->emplace(deletedRow.getRowStartLocation(), deletedRow);
+          } else { // New file!
+            std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>> newFile = std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>>(
+              new std::unordered_map<uint64_t, CrunchRowLocation::Reader>());
+            newFile->emplace(deletedRow.getRowStartLocation(), deletedRow);
+            deleteMap.emplace(deletedRow.getFileName(), newFile);
+          }
         } catch (std::exception e) {
           std::cerr << "crunch: Error reading delete file: " << e.what() << std::endl;
-          return -1;
+          return -73;
         }
       }
     }

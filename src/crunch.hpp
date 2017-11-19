@@ -17,7 +17,8 @@
 #include <memory>                /* unique_ptr */
 #include <cstdint>               /* uint64_t */
 #include <string>                /* std::string */
-#include <unordered_map> /*Unordered map*/
+#include <unordered_map>         /*Unordered map*/
+#include <vector>                /*std::vector*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
 #include <capnp/schema-parser.h> /* Cap'n Proto SchemaParser */
@@ -125,10 +126,11 @@ class crunch : public handler {
 
 private:
 
+    int mode; //Mode from open call
     void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
-    bool mmapData();
-    bool mremapData();
+    bool mmapData(std::string fileName);
+    bool mremapData(std::string fileName);
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -141,14 +143,15 @@ private:
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
-    std::string dataFile;
-    std::string deleteFile;
+    std::string currentDataFile;
+    std::vector<std::string> dataFiles;
+    std::unordered_map<std::string, std::string> deleteFiles;
     std::string transactionDirectory;
     int schemaFileDescriptor;
-    int dataFileDescriptor;
+    std::unordered_map<std::string, int> dataFileDescriptors;
     FILE* deleteFilePointer;
     //int deleteFileDescriptor;
-    int dataFileSize;
+    std::unordered_map<std::string, int> dataFileSizes;
 
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
@@ -156,9 +159,9 @@ private:
     //int currentRowNumber;
     int records;
     int numFields;
-    const capnp::word *dataPointer;
-    const capnp::word *dataPointerNext;
-    const capnp::word *dataFileStart;
+    std::unordered_map<std::string,const capnp::word*> dataPointers;
+    std::unordered_map<std::string,const capnp::word*> dataPointerNexts;
+    std::unordered_map<std::string,const capnp::word*> dataFileStarts;
 
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
 };
