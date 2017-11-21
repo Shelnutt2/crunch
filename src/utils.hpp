@@ -154,11 +154,17 @@ std::vector<std::string> read_directory(const std::string& name)
   DIR* dirp = opendir(name.c_str());
   struct dirent * dp;
   while ((dp = readdir(dirp)) != NULL) {
-    v.push_back(dp->d_name);
+    if(strcmp(dp->d_name, ".") && strcmp(dp->d_name, ".."))
+      v.push_back(dp->d_name);
   }
   closedir(dirp);
 #endif
   return v;
+}
+
+int is_fd_valid(int fd)
+{
+  return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
 }
 
 

@@ -60,10 +60,15 @@ struct st_mysql_storage_engine crunch_storage_engine=
     { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 
-bool crunch::mmapData() {
+bool crunch::mmapData(std::string fileName) {
+  DBUG_ENTER("crunch::mmapData");
+  currentDataFile = fileName;
   // Get size of data file needed for mmaping
-  dataFileSize = getFilesize(dataFile.c_str());
+  dataFileSize = getFilesize(fileName.c_str());
   // Only mmap if we have data
+  if(!is_fd_valid(dataFileDescriptor)) {
+    dataFileDescriptor = my_open(fileName.c_str(), mode, 0);
+  }
   if(dataFileSize >0) {
     DBUG_PRINT("crunch::mmap", ("Entering"));
     dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
@@ -71,9 +76,9 @@ bool crunch::mmapData() {
     if ((void *)dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mmap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for " << fileName <<  " , error: " << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
-      return false;
+      DBUG_RETURN(false);
     }
 
     // Set the start pointer to the current dataPointer
@@ -81,14 +86,25 @@ bool crunch::mmapData() {
   } else {
     dataPointer = dataFileStart = NULL;
   }
-  return true;
+  DBUG_RETURN(true);
 }
 
-bool crunch::mremapData() {
+bool crunch::unmmapData() {
+  DBUG_ENTER("crunch::unmmapData");
+  if (dataFileSize>0 && dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
+    perror("Error un-mmapping the file");
+    DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
+    return false;
+  }
+  DBUG_RETURN(my_close(dataFileDescriptor, 0));
+}
+
+bool crunch::mremapData(std::string fileName) {
+  DBUG_ENTER("crunch::mremapData");
 #ifdef __linux // Only linux support mremap call
   int oldDataFileSize = dataFileSize;
   // Get size of data file needed for mremaping
-  dataFileSize = getFilesize(dataFile.c_str());
+  dataFileSize = getFilesize(fileName.c_str());
   // Only mmap if we have data
   if(oldDataFileSize >0 && dataFileStart != NULL) {
     DBUG_PRINT("crunch::mremap", ("Entering"));
@@ -97,25 +113,25 @@ bool crunch::mremapData() {
     if ((void *)dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mremap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for " << dataFile <<  " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for " << currentDataFile <<  " , error: " << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
-      return false;
+      DBUG_RETURN(false);
     }
 
     // Set the start pointer to the current dataPointer
     dataFileStart = dataPointer;
   } else {
     dataPointer = dataFileStart = NULL;
-    return mmapData();
+    DBUG_RETURN(mmapData(fileName));
   }
-  return true;
+  DBUG_RETURN(true);
 #else
   if (dataFileSize>0 && dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
     perror("Error un-mmapping the file");
     DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
-    return false;
+    DBUG_RETURN(false);
   }
-  return mmapData();
+  DBUG_RETURN(mmapData(fileName));
 #endif
 }
 
@@ -183,6 +199,11 @@ int crunch::rnd_init(bool scan) {
   // Reset row number
   //currentRowNumber = -1;
   // Reset starting mmap position
+  if(currentDataFile != dataFiles[0] || dataPointer == NULL) {
+    unmmapData();
+    dataFileIndex = 0;
+    mmapData(dataFiles[dataFileIndex]);
+  }
   dataPointer = dataFileStart;
   dataPointerNext = dataFileStart;
   DBUG_RETURN(0);
@@ -204,7 +225,7 @@ int crunch::rnd_next(uchar *buf) {
     auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
     dataPointerNext = tmpDataMessageReader->getEnd();
     uint64_t rowStartLocation = (dataPointer - dataFileStart);
-    if(!checkForDeletedRow(dataFile, rowStartLocation)) {
+    if(!checkForDeletedRow(currentDataFile, rowStartLocation)) {
       dataMessageReader = std::move(tmpDataMessageReader);
       //currentRowNumber++;
 
@@ -216,7 +237,17 @@ int crunch::rnd_next(uchar *buf) {
     }
 
   } else { //End of data file
-    rc = HA_ERR_END_OF_FILE;
+    if (dataFileIndex >= dataFiles.size()-1) {
+      rc = HA_ERR_END_OF_FILE;
+    } else {
+      unmmapData();
+      //munmap((void*)dataFileStart, dataFileSize);
+      dataFileIndex++;
+      currentDataFile = dataFiles[dataFileIndex];
+      mmapData(currentDataFile);
+      dataPointer = dataFileStart;
+      dataPointerNext = dataFileStart;
+    }
   }
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
@@ -233,7 +264,6 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
   try {
     uint64_t len;
     memcpy(&len, pos, sizeof(uint64_t));
-    std::cerr << "len from pos is: " << len << std::endl;
     kj::ArrayPtr<const unsigned char> bytes = kj::arrayPtr(pos+sizeof(uint64_t), len);
 
     const kj::ArrayPtr<const capnp::word> view{
@@ -242,11 +272,11 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
 
     capnp::FlatArrayMessageReader message(view);
     CrunchRowLocation::Reader rowLocation = message.getRoot<CrunchRowLocation>();
-    if (dataFile != std::string(rowLocation.getFileName().cStr())) {
+    if (currentDataFile != std::string(rowLocation.getFileName().cStr())) {
       //TODO: Handle different file.
     }
     dataPointer = dataFileStart + rowLocation.getRowStartLocation();
-    if (!checkForDeletedRow(dataFile, rowLocation.getRowStartLocation())) {
+    if (!checkForDeletedRow(currentDataFile, rowLocation.getRowStartLocation())) {
       auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
         kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       dataMessageReader = std::move(tmpDataMessageReader);
@@ -369,24 +399,39 @@ int crunch::write(uchar *buf) {
   my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 
   // Use a message builder for reach row
-  capnp::MallocMessageBuilder tableRow;
+  try {
+    capnp::MallocMessageBuilder tableRow;
 
-  // Use stored structure
-  capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
+    // Use stored structure
+    capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
 
-  capnp::DynamicList::Builder nulls =  row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
+    capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
-  build_row(&row, &nulls);
+    build_row(&row, &nulls);
 
-  // Set the fileDescriptor to the end of the file
-  lseek(dataFileDescriptor, 0, SEEK_END);
-  //Write message to file
-  capnp::writeMessageToFd(dataFileDescriptor, tableRow);
+    if(!is_fd_valid(dataFileDescriptor)) {
+      dataFileDescriptor = my_open(currentDataFile.c_str(), mode, 0);
+    }
 
-  // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
-  if(!mremapData()) {
-    std::cerr << "Could not mremap data file after writing row" << std::endl;
-   return -1;
+    // Set the fileDescriptor to the end of the file
+    lseek(dataFileDescriptor, 0, SEEK_END);
+    //Write message to file
+    capnp::writeMessageToFd(dataFileDescriptor, tableRow);
+
+    // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
+    if (!mremapData(currentDataFile)) {
+      std::cerr << "Could not mremap data file after writing row" << std::endl;
+      return -1;
+    }
+  } catch (kj::Exception e) {
+    std::cerr << "exception: " << e.getFile() << ", line: "
+            << e.getLine() << ", type: " << (int)e.getType()
+            << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    return -321;
+  } catch(const std::exception& e) {
+    // Log errors
+    std::cerr << " write error: " << e.what() << std::endl;
+    return 321;
   }
 
 
@@ -415,7 +460,7 @@ int crunch::delete_row(const uchar *buf) {
   //crunch-delete will create file if not exists and serialize with capnproto
   uint64_t rowStartLocation = (dataPointer - dataFileStart);
   uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
-  markRowAsDeleted(dataFile, rowStartLocation, rowEndLocation);
+  markRowAsDeleted(currentDataFile, rowStartLocation, rowEndLocation);
 
   DBUG_RETURN(0);
 }
@@ -453,7 +498,7 @@ void crunch::position(const uchar *record) {
     capnp::MallocMessageBuilder RowLocation;
     CrunchRowLocation::Builder builder = RowLocation.initRoot<CrunchRowLocation>();
 
-    builder.setFileName(dataFile);
+    builder.setFileName(currentDataFile);
     uint64_t rowStartLocation = (dataPointer - dataFileStart);
     uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
     builder.setRowEndLocation(rowEndLocation);
@@ -578,6 +623,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
  */
 int crunch::open(const char *name, int mode, uint test_if_locked) {
   DBUG_ENTER("crunch::open");
+  int ret = 0;
 
   if (!(share = get_share()))
     DBUG_RETURN(1);
@@ -587,20 +633,43 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
   //DBUG_ASSERT(options);
 #endif
-
+  this->mode = mode;
   folderName = name;
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = read_directory(folderName);
+
+  for(auto it : files_in_directory) {
+    std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
+    auto extensionIndex = it.find(".");
+    if(extensionIndex != std::string::npos) {
+      std::string extension = it.substr(extensionIndex);
+      std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
+      if(extension == TABLE_SCHEME_EXTENSION) {
+        schemaFile = folderName + "/" + it;
+      } else if (extension  == TABLE_DATA_EXTENSION) {
+        dataFiles.push_back(folderName + "/" + it);
+        //currentDataFile = folderName + "/" + it;
+      } else if (extension  == TABLE_DELETE_EXTENSION) {
+        //Open crunch delete
+          deleteFilePointer = my_fopen((folderName + "/" + it).c_str(), mode, 0);
+        //deleteFileDescriptor = deleteFilePointer.
+          ret = readDeletesIntoMap(deleteFilePointer);
+        }
+      }
+ }
+
+  dataFileIndex = 0;
+  currentDataFile = dataFiles[dataFileIndex];
 
   // Build file names for ondisk
   baseFilePath = name + std::string("/") + table->s->table_name.str;
   DBUG_PRINT("info", ("Open for table: %s", baseFilePath.c_str()));
   //tableName = name;
   schemaFile = baseFilePath +  TABLE_SCHEME_EXTENSION;
-  dataFile = baseFilePath +  TABLE_DATA_EXTENSION;
+  currentDataFile = baseFilePath +  TABLE_DATA_EXTENSION;
   deleteFile = baseFilePath + TABLE_DELETE_EXTENSION;
   schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
-  dataFileDescriptor = my_open(dataFile.c_str(), mode, 0);
+
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 
 
@@ -613,6 +682,12 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
     std::string structName = parseFileNameForStructName(name);
     // Get the nested structure from file, for now there is only a single struct in the schema files
     capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
+  } catch (kj::Exception e) {
+    std::cerr << "exception: " << e.getFile() << ", line: "
+              << e.getLine() << ", type: " << (int)e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    close();
+    DBUG_RETURN(-2);
   } catch(const std::exception& e) {
     // Log errors
     std::cerr << name << " errored when open file with: " << e.what() << std::endl;
@@ -620,7 +695,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
     DBUG_RETURN(2);
   };
 
-  if(!mmapData())
+  if(!mmapData(currentDataFile))
     DBUG_RETURN(-1);
 
   numFields = 0;
@@ -631,7 +706,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   //Open crunch delete
   deleteFilePointer = my_fopen(deleteFile.c_str(), mode, 0);
   //deleteFileDescriptor = deleteFilePointer.
-  int ret = readDeletesIntoMap(deleteFilePointer);
+  ret = readDeletesIntoMap(deleteFilePointer);
 
   DBUG_RETURN(ret);
 }
@@ -647,8 +722,8 @@ int crunch::close(void){
     perror("Error un-mmapping the file");
     DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
   }
+  unmmapData();
   my_close(schemaFileDescriptor, 0);
-  my_close(dataFileDescriptor, 0);
   my_fclose(deleteFilePointer, 0);
   DBUG_RETURN(0);
 }

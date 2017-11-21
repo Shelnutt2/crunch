@@ -17,6 +17,7 @@
 #include <memory>                /* unique_ptr */
 #include <cstdint>               /* uint64_t */
 #include <string>                /* std::string */
+#include <vector>                /* std::vector */
 #include <unordered_map> /*Unordered map*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
@@ -127,8 +128,9 @@ private:
 
     void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
-    bool mmapData();
-    bool mremapData();
+    bool mmapData(std::string fileName);
+    bool mremapData(std::string fileName);
+    bool unmmapData();
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -141,7 +143,8 @@ private:
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
-    std::string dataFile;
+    std::string currentDataFile;
+    std::vector<std::string> dataFiles;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
@@ -161,6 +164,8 @@ private:
     const capnp::word *dataFileStart;
 
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
+    int dataFileIndex;
+    int mode;
 };
 
 
