@@ -28,11 +28,6 @@
 
 #include "crunchrowlocation.capnp.h"
 
-#define TABLE_SCHEME_EXTENSION ".capnp"
-#define TABLE_DATA_EXTENSION ".capnpd"
-#define TABLE_DELETE_EXTENSION ".deleted.capnpd"
-#define TABLE_TRANSACTION_DIRECTORY "transactions"
-
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
 
@@ -43,6 +38,9 @@ static PSI_mutex_key ex_key_mutex_Example_share_mutex;
   The option values can be specified in the CREATE TABLE at the end:
   CREATE TABLE ( ... ) *here*
 */
+
+static int crunch_commit(handlerton *hton, THD *thd, bool all);
+static int crunch_rollback(handlerton *hton, THD *thd, bool all);
 
 /** @brief
  Crunch_share is a class that will be shared among all open handlers.
@@ -131,6 +129,7 @@ private:
     bool mmapData(std::string fileName);
     bool mremapData(std::string fileName);
     bool unmmapData();
+    int findTableFiles(std::string folderName);
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -164,8 +163,9 @@ private:
     const capnp::word *dataFileStart;
 
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
-    int dataFileIndex;
+    unsigned long dataFileIndex;
     int mode;
+    std::string name;
 };
 
 

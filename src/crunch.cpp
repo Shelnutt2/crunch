@@ -51,6 +51,8 @@ static int crunch_init_func(void *p)
   crunch_hton->create = crunch_create_handler;
   crunch_hton->flags = HTON_CAN_RECREATE;
   crunch_hton->tablefile_extensions = crunch_exts;
+  crunch_hton->commit = crunch_commit;
+  crunch_hton->rollback = crunch_rollback;
 
   DBUG_RETURN(0);
 }
@@ -66,9 +68,10 @@ bool crunch::mmapData(std::string fileName) {
   // Get size of data file needed for mmaping
   dataFileSize = getFilesize(fileName.c_str());
   // Only mmap if we have data
-  if(!is_fd_valid(dataFileDescriptor)) {
-    dataFileDescriptor = my_open(fileName.c_str(), mode, 0);
+  if(is_fd_valid(dataFileDescriptor)) {
+    my_close(dataFileDescriptor,0);
   }
+  dataFileDescriptor = my_open(fileName.c_str(), mode, 0);
   if(dataFileSize >0) {
     DBUG_PRINT("crunch::mmap", ("Entering"));
     dataPointer = (capnp::word *)mmap(NULL, dataFileSize, PROT_READ, MAP_SHARED, dataFileDescriptor, 0);
@@ -199,6 +202,7 @@ int crunch::rnd_init(bool scan) {
   // Reset row number
   //currentRowNumber = -1;
   // Reset starting mmap position
+  findTableFiles(folderName);
   if(currentDataFile != dataFiles[0] || dataPointer == NULL) {
     unmmapData();
     dataFileIndex = 0;
@@ -240,13 +244,15 @@ int crunch::rnd_next(uchar *buf) {
     if (dataFileIndex >= dataFiles.size()-1) {
       rc = HA_ERR_END_OF_FILE;
     } else {
+      DBUG_PRINT("info", ("End of file, moving to next"));
       unmmapData();
-      //munmap((void*)dataFileStart, dataFileSize);
       dataFileIndex++;
-      currentDataFile = dataFiles[dataFileIndex];
-      mmapData(currentDataFile);
+      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataFiles[dataFileIndex].c_str()));
+      mmapData(dataFiles[dataFileIndex]);
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
+      dbug_tmp_restore_column_map(table->write_set, orig);
+      DBUG_RETURN(rnd_next(buf));
     }
   }
   // Reset bitmap to original
@@ -273,10 +279,23 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
     capnp::FlatArrayMessageReader message(view);
     CrunchRowLocation::Reader rowLocation = message.getRoot<CrunchRowLocation>();
     if (currentDataFile != std::string(rowLocation.getFileName().cStr())) {
-      //TODO: Handle different file.
+      DBUG_PRINT("info", ("rnd_pos is in different file"));
+      std::cerr << "inside rnd_pos and have different file: " << currentDataFile << " (currentDataFile) vs " << rowLocation.getFileName().cStr() << " (rowLocation.getFileName())" << std::endl;
+      unmmapData();
+      for(unsigned long i = 0; i < dataFiles.size(); i++) {
+        if(dataFiles[i] == std::string(rowLocation.getFileName().cStr())) {
+          dataFileIndex = i;
+          break;
+        }
+      }
+      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataFiles[dataFileIndex].c_str()));
+      mmapData(dataFiles[dataFileIndex]);
+
+      dataPointer = dataFileStart;
+      dataPointerNext = dataFileStart;
     }
     dataPointer = dataFileStart + rowLocation.getRowStartLocation();
-    if (!checkForDeletedRow(currentDataFile, rowLocation.getRowStartLocation())) {
+    if (!checkForDeletedRow(rowLocation.getFileName().cStr(), rowLocation.getRowStartLocation())) {
       auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
         kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       dataMessageReader = std::move(tmpDataMessageReader);
@@ -409,20 +428,24 @@ int crunch::write(uchar *buf) {
 
     build_row(&row, &nulls);
 
-    if(!is_fd_valid(dataFileDescriptor)) {
-      dataFileDescriptor = my_open(currentDataFile.c_str(), mode, 0);
+    crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
+
+    DBUG_PRINT("debug", ("Transaction is running: %d, uuid: %s", txn->inProgress, txn->uuid.str().c_str()));
+    if(!is_fd_valid(txn->transactionDataFileDescriptor) || txn->transactionDataFileDescriptor <= 0) {
+      std::cerr << "File descriptor ("  << ") not valid, opening:" << txn->transactionDataFile << std::endl;
+      txn->transactionDataFileDescriptor = my_open(txn->transactionDataFile.c_str(), O_RDWR | O_CREAT, 0);
     }
 
     // Set the fileDescriptor to the end of the file
-    lseek(dataFileDescriptor, 0, SEEK_END);
+    lseek(txn->transactionDataFileDescriptor, 0, SEEK_END);
     //Write message to file
-    capnp::writeMessageToFd(dataFileDescriptor, tableRow);
+    capnp::writeMessageToFd(txn->transactionDataFileDescriptor, tableRow);
 
     // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
-    if (!mremapData(currentDataFile)) {
+    /*if (!mremapData(currentDataFile)) {
       std::cerr << "Could not mremap data file after writing row" << std::endl;
       return -1;
-    }
+    }*/
   } catch (kj::Exception e) {
     std::cerr << "exception: " << e.getFile() << ", line: "
             << e.getLine() << ", type: " << (int)e.getType()
@@ -523,11 +546,11 @@ int crunch::start_stmt(THD *thd, thr_lock_type lock_type)
 
   crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn= new crunchTxn();
+    txn= new crunchTxn(name, transactionDirectory);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
-  if (txn->uuid.str().empty() && !(ret= txn->begin())) {
+  if (!txn->inProgress && !(ret= txn->begin())) {
     //txn->stmt= txn->new_savepoint();
     trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
   }
@@ -588,30 +611,77 @@ int crunch::external_lock(THD *thd, int lock_type) {
   int rc = 0;
   crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn= new crunchTxn;
+    txn= new crunchTxn(name, transactionDirectory);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
   // If we are not unlocking
-  if (lock_type != F_UNLCK)
-  {
+  if (lock_type != F_UNLCK) {
     txn->tx_isolation= thd->tx_isolation;
     /*if (txn->lock_count == 0) {
       //txn->lock_count= 1;
     }*/
 
-    if (txn->uuid.str().empty()) {
+    if (!txn->inProgress) {
+      DBUG_PRINT("debug", ("Making new transaction"));
       rc = txn->begin();
       trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
+    } else {
+      DBUG_PRINT("debug", ("Transaction %s already exists", txn->uuid.str().c_str()));
     }
-  }
-  else {
-    if (!txn->uuid.str().empty()) {
-      /* Commit the transaction if we're in auto-commit mode */
+  } else {
+    if (txn->inProgress) {
+
+      if (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) {
+        /*
+          Do like InnoDB: when we get here, it's time to commit a
+          single-statement transaction.
+
+          If the statement involved multiple tables, this code will be executed
+          for each of them, but that's ok because non-first tx->commit() calls
+          will be no-ops.
+        */
+        if (txn->commit_or_rollback()) {
+          rc = HA_ERR_INTERNAL_ERROR;
+        }
+      }
       //this->Commit();//(thd, FALSE);
     }
   }
   DBUG_RETURN(rc);
+}
+
+int crunch::findTableFiles(std::string folderName) {
+  //Loop through all files in directory of folder and find all files matching extension, add to maps
+  std::vector<std::string> files_in_directory = read_directory(folderName);
+
+  int ret = 0;
+
+  for(auto it : files_in_directory) {
+    //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
+    auto extensionIndex = it.find(".");
+    if(extensionIndex != std::string::npos) {
+      std::string extension = it.substr(extensionIndex);
+      //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
+      if(extension == TABLE_SCHEME_EXTENSION) {
+        schemaFile = folderName + "/" + it;
+      } else if (extension  == TABLE_DATA_EXTENSION) {
+        bool fileExists = false;
+        std::string newDataFile = folderName + "/" + it;
+        for(auto existingFile : dataFiles) {
+          if(existingFile == newDataFile)
+            fileExists = true;
+        }
+        if(!fileExists)
+          dataFiles.push_back(newDataFile);
+      } else if (extension  == TABLE_DELETE_EXTENSION) {
+        //Open crunch delete
+        deleteFilePointer = my_fopen((folderName + "/" + it).c_str(), mode, 0);
+        ret = readDeletesIntoMap(deleteFilePointer);
+      }
+    }
+  }
+  return ret;
 }
 
 /** Open a table mmap files
@@ -635,32 +705,13 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #endif
   this->mode = mode;
   folderName = name;
-  //Loop through all files in directory of folder and find all files matching extension, add to maps
-  std::vector<std::string> files_in_directory = read_directory(folderName);
 
-  for(auto it : files_in_directory) {
-    std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
-    auto extensionIndex = it.find(".");
-    if(extensionIndex != std::string::npos) {
-      std::string extension = it.substr(extensionIndex);
-      std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
-      if(extension == TABLE_SCHEME_EXTENSION) {
-        schemaFile = folderName + "/" + it;
-      } else if (extension  == TABLE_DATA_EXTENSION) {
-        dataFiles.push_back(folderName + "/" + it);
-        //currentDataFile = folderName + "/" + it;
-      } else if (extension  == TABLE_DELETE_EXTENSION) {
-        //Open crunch delete
-          deleteFilePointer = my_fopen((folderName + "/" + it).c_str(), mode, 0);
-        //deleteFileDescriptor = deleteFilePointer.
-          ret = readDeletesIntoMap(deleteFilePointer);
-        }
-      }
- }
+  findTableFiles(folderName);
 
   dataFileIndex = 0;
   currentDataFile = dataFiles[dataFileIndex];
 
+  this->name = name;
   // Build file names for ondisk
   baseFilePath = name + std::string("/") + table->s->table_name.str;
   DBUG_PRINT("info", ("Open for table: %s", baseFilePath.c_str()));
@@ -792,6 +843,50 @@ int crunch::delete_table(const char *name)
   DBUG_PRINT("info", ("Delete for table: %s", name));
   remove_directory(name);
   DBUG_RETURN(0);
+}
+
+static int crunch_commit(handlerton *hton, THD *thd, bool all)
+{
+  DBUG_ENTER("crunch_commit");
+  int ret= 0;
+  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
+
+  DBUG_PRINT("debug", ("all: %d", all));
+  if (all)
+  {
+    if(txn != NULL) {
+      ret = txn->commit();
+      thd_set_ha_data(thd, hton, NULL);
+      //delete txn;
+    }
+  }
+
+  if(!ret)
+    DBUG_PRINT("info", ("error val: %d", ret));
+  DBUG_RETURN(ret);
+}
+
+
+static int crunch_rollback(handlerton *hton, THD *thd, bool all)
+{
+  DBUG_ENTER("crunch_rollback");
+  int ret= 0;
+  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(thd, crunch_hton);
+
+  DBUG_PRINT("debug", ("all: %d", all));
+
+  if (all)
+  {
+    if(txn != NULL) {
+      ret = txn->rollback();
+      thd_set_ha_data(thd, hton, NULL);
+      //delete txn;
+    }
+  }
+
+  if(!ret)
+    DBUG_PRINT("info", ("error val: %d", ret));
+  DBUG_RETURN(ret);
 }
 
 /**

@@ -12,9 +12,9 @@
 class crunchTxn {
 
 public:
-    crunchTxn(){};
+    crunchTxn(std::string baseDirectory, std::string transactionDirectory);
 
-    ~crunchTxn() {};
+    ~crunchTxn();
 
     int begin();
 
@@ -26,9 +26,22 @@ public:
 
     enum_tx_isolation tx_isolation;
 
-    bool is_tx_failed;
+    bool isTxFailed;
+
+    bool inProgress;
 
     sole::uuid uuid;
+
+    std::string baseDirectory;
+
+    std::string transactionDirectory;
+
+    std::string transactionDataFile;
+
+    int transactionDataFileDescriptor;
+    //std::chrono::nanoseconds startTimeMilliSeconds;
+    std::string baseFileName;
+    std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;
 };
 
 

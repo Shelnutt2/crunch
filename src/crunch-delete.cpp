@@ -13,21 +13,22 @@ int crunch::readDeletesIntoMap(FILE* deleteFilePointer) {
     fseek(deleteFilePointer, 0, SEEK_END); // seek to end of file
     long size = ftell(deleteFilePointer); // get current file pointer
     fseek(deleteFilePointer, 0, SEEK_SET); // seek back to beginning of file
-    if(size) {
+    if(size > 0) {
       while (!feof(deleteFilePointer)) {
         try {
-        capnp::StreamFdMessageReader message(fileno(deleteFilePointer));
-        CrunchRowLocation::Reader deletedRow = message.getRoot<CrunchRowLocation>();
+          capnp::StreamFdMessageReader message(fileno(deleteFilePointer));
+          CrunchRowLocation::Reader deletedRow = message.getRoot<CrunchRowLocation>();
 
-        auto fileMap = deleteMap.find(deletedRow.getFileName());
-        if (fileMap != deleteMap.end()) {
-          fileMap->second->emplace(deletedRow.getRowStartLocation(), deletedRow);
-        } else { // New file!
-          std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>> newFile = std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>>(
-            new std::unordered_map<uint64_t, CrunchRowLocation::Reader>());
-          newFile->emplace(deletedRow.getRowStartLocation(), deletedRow);
-          deleteMap.emplace(deletedRow.getFileName(), newFile);
-        }
+          auto fileMap = deleteMap.find(deletedRow.getFileName());
+          if (fileMap != deleteMap.end()) {
+           fileMap->second->emplace(deletedRow.getRowStartLocation(), deletedRow);
+          } else { // New file!
+            std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>> newFile =
+              std::shared_ptr<std::unordered_map<uint64_t, CrunchRowLocation::Reader>>(
+                new std::unordered_map<uint64_t, CrunchRowLocation::Reader>());
+            newFile->emplace(deletedRow.getRowStartLocation(), deletedRow);
+            deleteMap.emplace(deletedRow.getFileName(), newFile);
+          }
         } catch (std::exception e) {
           std::cerr << "crunch: Error reading delete file: " << e.what() << std::endl;
           return -1;
