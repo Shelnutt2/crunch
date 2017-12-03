@@ -7,6 +7,7 @@
 
 
 #include <handler.h>
+#include <chrono>
 #include "sole.hpp"
 
 class crunchTxn {
@@ -39,6 +40,11 @@ public:
     std::string transactionDataFile;
 
     int transactionDataFileDescriptor;
+
+    std::string transactionDeleteFile;
+
+    int transactionDeleteFileDescriptor;
+
     //std::chrono::nanoseconds startTimeMilliSeconds;
     std::string baseFileName;
     std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;

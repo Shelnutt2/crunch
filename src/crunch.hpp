@@ -42,6 +42,9 @@ static PSI_mutex_key ex_key_mutex_Example_share_mutex;
 static int crunch_commit(handlerton *hton, THD *thd, bool all);
 static int crunch_rollback(handlerton *hton, THD *thd, bool all);
 
+// Handler for crunch engine
+extern handlerton *crunch_hton;
+
 /** @brief
  Crunch_share is a class that will be shared among all open handlers.
 */
@@ -86,10 +89,11 @@ class crunch : public handler {
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
     int delete_table(const char *name);
-    int readDeletesIntoMap(FILE* deleteFilePointer);
+    int readDeletesIntoMap(int deleteFileDescriptor);
     bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
     void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
     int start_stmt(THD *thd, thr_lock_type lock_type);
+    static int disconnect(handlerton *hton, MYSQL_THD thd);
 
     static inline bool
     row_is_fixed_length(TABLE *table)
@@ -148,7 +152,7 @@ private:
     std::string transactionDirectory;
     int schemaFileDescriptor;
     int dataFileDescriptor;
-    FILE* deleteFilePointer;
+    //FILE* deleteFilePointer;
     //int deleteFileDescriptor;
     int dataFileSize;
 

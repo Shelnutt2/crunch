@@ -15,6 +15,8 @@ crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory
 crunchTxn::~crunchTxn() {
   if(is_fd_valid(transactionDataFileDescriptor))
     my_close(transactionDataFileDescriptor, 0);
+  if(is_fd_valid(transactionDeleteFileDescriptor))
+    my_close(transactionDeleteFileDescriptor, 0);
 }
 
 int crunchTxn::begin() {
@@ -29,9 +31,13 @@ int crunchTxn::begin() {
 
   this->transactionDataFile = fn_format(name_buff, baseFileName.c_str(), transactionDirectory.c_str(), TABLE_DATA_EXTENSION,
             MY_REPLACE_EXT|MY_UNPACK_FILENAME);
-  DBUG_PRINT("debug", ("transaction: %s, transactionDataFile: %s", this->uuid.str().c_str(), this->transactionDataFile.c_str()));
   this->transactionDataFileDescriptor = my_create(this->transactionDataFile.c_str(),0,
             O_RDWR | O_TRUNC,MYF(MY_WME));
+
+  this->transactionDeleteFile = fn_format(name_buff, baseFileName.c_str(), transactionDirectory.c_str(), TABLE_DELETE_EXTENSION,
+                                        MY_REPLACE_EXT|MY_UNPACK_FILENAME);
+  this->transactionDeleteFileDescriptor = my_create(this->transactionDeleteFile.c_str(),0,
+                                                  O_RDWR | O_TRUNC,MYF(MY_WME));
 
   this->inProgress = true;
   return ret;
@@ -60,6 +66,17 @@ int crunchTxn::commit() {
   } else {
     my_delete(transactionDataFile.c_str(), 0);
   }
+
+
+  if(is_fd_valid(transactionDeleteFileDescriptor))
+    res = my_close(transactionDeleteFileDescriptor, 0);
+  if(getFilesize(transactionDeleteFile.c_str()) > 0) {
+    my_rename(transactionDeleteFile.c_str(), fn_format(name_buff, baseFileName.c_str(), baseDirectory.c_str(),
+                                                     TABLE_DELETE_EXTENSION,  MY_REPLACE_EXT|MY_UNPACK_FILENAME), 0);
+  } else {
+    my_delete(transactionDeleteFile.c_str(), 0);
+  }
+
   this->inProgress = false;
   return res;
 }
@@ -69,6 +86,9 @@ int crunchTxn::rollback() {
   if(is_fd_valid(transactionDataFileDescriptor))
     res = my_close(transactionDataFileDescriptor, 0);
   my_delete(transactionDataFile.c_str(), 0);
+  if(is_fd_valid(transactionDeleteFileDescriptor))
+    res = my_close(transactionDeleteFileDescriptor, 0);
+  my_delete(transactionDeleteFile.c_str(), 0);
   this->inProgress = false;
   return res;
 }
