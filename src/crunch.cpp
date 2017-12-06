@@ -417,6 +417,8 @@ int crunch::write(uchar *buf) {
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 
+  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
+
   // Use a message builder for reach row
   try {
     capnp::MallocMessageBuilder tableRow;
@@ -427,8 +429,6 @@ int crunch::write(uchar *buf) {
     capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
     build_row(&row, &nulls);
-
-    crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
 
     //DBUG_PRINT("debug", ("Transaction is running: %d, uuid: %s", txn->inProgress, txn->uuid.str().c_str()));
     if(!is_fd_valid(txn->transactionDataFileDescriptor)) {
@@ -441,19 +441,16 @@ int crunch::write(uchar *buf) {
     //Write message to file
     capnp::writeMessageToFd(txn->transactionDataFileDescriptor, tableRow);
 
-    // mremap the datafile since it's grown. This is a naive approach, ideally we'd like to do this from a fswatch thread and after a transaction completes
-    /*if (!mremapData(currentDataFile)) {
-      std::cerr << "Could not mremap data file after writing row" << std::endl;
-      return -1;
-    }*/
   } catch (kj::Exception e) {
     std::cerr << "exception: " << e.getFile() << ", line: "
             << e.getLine() << ", type: " << (int)e.getType()
             << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    txn->isTxFailed = true;
     return -321;
   } catch(const std::exception& e) {
     // Log errors
     std::cerr << " write error: " << e.what() << std::endl;
+    txn->isTxFailed = true;
     return 321;
   }
 
@@ -873,7 +870,7 @@ static int crunch_commit(handlerton *hton, THD *thd, bool all)
   if (all)
   {
     if(txn != NULL) {
-      ret = txn->commit();
+      ret = txn->commit_or_rollback();
       //thd_set_ha_data(thd, hton, NULL);
       //delete txn;
     }

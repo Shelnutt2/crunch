@@ -82,5 +82,17 @@ void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, u
   // Set the fileDescriptor to the end of the file
   lseek(txn->transactionDeleteFileDescriptor , 0, SEEK_END);
   //Write message to file
-  capnp::writeMessageToFd(txn->transactionDeleteFileDescriptor , deleteRow);
+  try {
+    capnp::writeMessageToFd(txn->transactionDeleteFileDescriptor, deleteRow);
+  } catch (kj::Exception e) {
+    if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
+      std::cerr << "exception: " << e.getFile() << ", line: "
+                << e.getLine() << ", type: " << (int) e.getType()
+                << ", e.what(): " << e.getDescription().cStr() << std::endl;
+      txn->isTxFailed = true;
+    }
+  } catch (std::exception e) {
+    std::cerr << "crunch: Error reading delete file: " << e.what() << std::endl;
+    txn->isTxFailed = true;
+  }
 }
