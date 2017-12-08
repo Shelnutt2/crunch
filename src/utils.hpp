@@ -46,7 +46,6 @@ int createDirectory(std::string dir);
 
 int remove_directory(const char *path);
 
-
 std::vector<std::string> read_directory(const std::string& name);
 
 int is_fd_valid(int fd);

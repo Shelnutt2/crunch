@@ -8,9 +8,27 @@
 
 #include <handler.h>
 #include <chrono>
+#include <unordered_map>
 #include "sole.hpp"
 
+typedef struct filesForTransaction {
+    std::string baseDirectory;
+
+    std::string transactionDirectory;
+
+    std::string transactionDataFile;
+
+    int transactionDataFileDescriptor;
+
+    std::string transactionDeleteFile;
+
+    int transactionDeleteFileDescriptor;
+
+    std::string baseFileName;
+} filesForTransaction;
+
 class crunchTxn {
+
 
 public:
     crunchTxn(std::string baseDirectory, std::string transactionDirectory);
@@ -25,6 +43,12 @@ public:
 
     int rollback();
 
+    int registerNewTable(std::string baseDirectory, std::string transactionDirectory);
+
+    int getTransactionDataFileDescriptor(std::string name);
+
+    int getTransactionDeleteFileDescriptor(std::string name);
+
     enum_tx_isolation tx_isolation;
 
     bool isTxFailed;
@@ -33,20 +57,10 @@ public:
 
     sole::uuid uuid;
 
-    std::string baseDirectory;
+    int tablesInUse;
 
-    std::string transactionDirectory;
+    std::unordered_map<std::string, filesForTransaction*> tables;
 
-    std::string transactionDataFile;
-
-    int transactionDataFileDescriptor;
-
-    std::string transactionDeleteFile;
-
-    int transactionDeleteFileDescriptor;
-
-    //std::chrono::nanoseconds startTimeMilliSeconds;
-    std::string baseFileName;
     std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;
 };
 

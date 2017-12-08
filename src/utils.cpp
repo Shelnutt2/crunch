@@ -15,6 +15,9 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <my_sys.h>
+#include <iostream>
+
 #endif
 
 
@@ -165,5 +168,5 @@ std::vector<std::string> read_directory(const std::string& name)
 
 int is_fd_valid(int fd)
 {
-  return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+  return fd > 0 && (fcntl(fd, F_GETFD) != -1 || errno != EBADF);
 }

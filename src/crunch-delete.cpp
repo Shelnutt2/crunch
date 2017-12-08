@@ -64,10 +64,6 @@ void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, u
   crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
 
   //DBUG_PRINT("debug", ("Transaction is running: %d, uuid: %s", txn->inProgress, txn->uuid.str().c_str()));
-  if(!is_fd_valid(txn->transactionDeleteFileDescriptor)) {
-    //std::cerr << "File descriptor ("  << ") not valid, opening:" << txn->transactionDeleteFile << std::endl;
-    txn->transactionDeleteFileDescriptor = my_open(txn->transactionDeleteFile.c_str(), O_RDWR | O_CREAT, 0);
-  }
 
   capnp::MallocMessageBuilder deleteRow;
   CrunchRowLocation::Builder builder = deleteRow.initRoot<CrunchRowLocation>();
@@ -75,15 +71,11 @@ void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, u
   builder.setRowEndLocation(rowEndLocation);
   builder.setRowStartLocation(rowStartLocation);
 
-  if(!is_fd_valid(txn->transactionDeleteFileDescriptor)) {
-    txn->transactionDeleteFileDescriptor = my_open(deleteFile.c_str(), O_RDWR | O_CREAT, 0);
-  }
-
   // Set the fileDescriptor to the end of the file
-  lseek(txn->transactionDeleteFileDescriptor , 0, SEEK_END);
+  lseek(txn->getTransactionDeleteFileDescriptor(this->name), 0, SEEK_END);
   //Write message to file
   try {
-    capnp::writeMessageToFd(txn->transactionDeleteFileDescriptor, deleteRow);
+    capnp::writeMessageToFd(txn->getTransactionDeleteFileDescriptor(this->name), deleteRow);
   } catch (kj::Exception e) {
     if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
       std::cerr << "exception: " << e.getFile() << ", line: "
