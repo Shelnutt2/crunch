@@ -75,21 +75,6 @@ int create_directory(std::string dir) {
   return nError;
 }
 
-/**
- * Remove a directory
- * @param dir
- * @return error code
- *//*
-int rmDirectory(std::string dir) {
-  int nError = 0;
-#if defined(_WIN32)
-  nError = _rmdir(dir.c_str()); // can be used on Windows
-#else
-  nError = rmdir(dir.c_str()); // can be used on non-Windows
-#endif
-  return nError;
-}*/
-
 int remove_directory(std::string pathString) {
   const char* path = pathString.c_str();
   DIR *d = opendir(path);
@@ -140,7 +125,11 @@ int remove_directory(std::string pathString) {
   return r;
 }
 
-
+/**
+ * Read contents of a directory
+ * @param name
+ * @return vector of files/directories in directory
+ */
 std::vector<std::string> read_directory(const std::string& name)
 {
   std::vector<std::string> v;

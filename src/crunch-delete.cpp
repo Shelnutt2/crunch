@@ -10,6 +10,11 @@
 #include <stdio.h>
 #include <iostream>
 
+/**
+ * Takes a file descriptor and reads delete messages into a map
+ * @param deleteFileDescriptor
+ * @return
+ */
 int crunch::readDeletesIntoMap(int deleteFileDescriptor) {
   long size = lseek(deleteFileDescriptor, 0, SEEK_END); // seek to end of file
   lseek(deleteFileDescriptor, 0, SEEK_SET); // seek back to beginning of file
@@ -47,6 +52,12 @@ int crunch::readDeletesIntoMap(int deleteFileDescriptor) {
   return 0;
 }
 
+/**
+ * Checks for if a row is deleted or not
+ * @param fileName
+ * @param rowStartLocation
+ * @return Returns true if row is deleted
+ */
 bool crunch::checkForDeletedRow(std::string fileName, uint64_t rowStartLocation) {
   auto fileNameMap = deleteMap.find(fileName);
   if(fileNameMap == deleteMap.end())
@@ -59,11 +70,15 @@ bool crunch::checkForDeletedRow(std::string fileName, uint64_t rowStartLocation)
   return true;
 }
 
+/**
+ * Marks a row for deletion
+ * @param fileName
+ * @param rowStartLocation
+ * @param rowEndLocation
+ */
 void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation) {
 
   crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
-
-  //DBUG_PRINT("debug", ("Transaction is running: %d, uuid: %s", txn->inProgress, txn->uuid.str().c_str()));
 
   capnp::MallocMessageBuilder deleteRow;
   CrunchRowLocation::Builder builder = deleteRow.initRoot<CrunchRowLocation>();

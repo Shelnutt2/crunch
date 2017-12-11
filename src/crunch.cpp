@@ -244,7 +244,6 @@ int crunch::rnd_next(uchar *buf) {
     } else {
       dbug_tmp_restore_column_map(table->write_set, orig);
       DBUG_RETURN(rnd_next(buf));
-      //rc = HA_ERR_RECORD_DELETED;
     }
 
   } else { //End of data file
@@ -435,8 +434,6 @@ int crunch::write(uchar *buf) {
     capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
     build_row(&row, &nulls);
-
-    //DBUG_PRINT("debug", ("Transaction is running: %d, uuid: %s", txn->inProgress, txn->uuid.str().c_str()));
 
     // Set the fileDescriptor to the end of the file
     lseek(txn->getTransactionDataFileDescriptor(this->name), 0, SEEK_END);
@@ -654,7 +651,6 @@ int crunch::external_lock(THD *thd, int lock_type) {
           delete txn;
         }
       }
-      //this->Commit();//(thd, FALSE);
     }
   }
   DBUG_RETURN(rc);
@@ -738,11 +734,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   // Build file names for ondisk
   baseFilePath = name + std::string("/") + table->s->table_name.str;
   DBUG_PRINT("info", ("Open for table: %s", baseFilePath.c_str()));
-  //tableName = name;
-  //schemaFile = baseFilePath +  TABLE_SCHEME_EXTENSION;
   currentDataFile = baseFilePath +  TABLE_DATA_EXTENSION;
-  //deleteFile = baseFilePath + TABLE_DELETE_EXTENSION;
-  //schemaFileDescriptor = my_open(schemaFile.c_str(), mode, 0);
 
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 

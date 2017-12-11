@@ -6,6 +6,11 @@
 #include "crunch-txn.hpp"
 #include "utils.hpp"
 
+/**
+ * Create new transaction
+ * @param baseDirectory
+ * @param transactionDirectory
+ */
 crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory) {
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
@@ -16,6 +21,9 @@ crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory
   this->tablesInUse=1;
 }
 
+/**
+ * Destructor
+ */
 crunchTxn::~crunchTxn() {
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
@@ -28,6 +36,12 @@ crunchTxn::~crunchTxn() {
   }
 }
 
+/**
+ * Add a new table to an existing transaction
+ * @param baseDirectory
+ * @param transactionDirectory
+ * @return
+ */
 int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory) {
   // If table already exists don't re-register it
   if(this->tables.find(baseDirectory) != this->tables.end()) {
@@ -35,6 +49,7 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   }
   char name_buff[FN_REFLEN];
 
+  // Create new files struct for new table
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
   file->transactionDirectory = transactionDirectory;
@@ -59,6 +74,10 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   return 0;
 }
 
+/**
+ * Start a transaction
+ * @return
+ */
 int crunchTxn::begin() {
 
   char name_buff[FN_REFLEN];
@@ -67,6 +86,7 @@ int crunchTxn::begin() {
   this->startTimeMilliSeconds = std::chrono::duration_cast<std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
 
   uuid = sole::uuid4();
+  //For each table we need to create files in disk to hold transaction data
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
     file->baseFileName = std::to_string(this->startTimeMilliSeconds.count()) + "-" + uuid.str();
@@ -94,6 +114,10 @@ int crunchTxn::begin() {
   return ret;
 }
 
+/**
+ * Attempts to commit the transaction, rolls back on any errors.
+ * @return
+ */
 int crunchTxn::commit_or_rollback() {
   int res;
   if (this->isTxFailed) {
@@ -105,6 +129,10 @@ int crunchTxn::commit_or_rollback() {
   return res;
 }
 
+/**
+ * Commits a transaction, one file at a time
+ * @return
+ */
 int crunchTxn::commit() {
   int res = 0;
   char name_buff[FN_REFLEN];
@@ -142,6 +170,10 @@ int crunchTxn::commit() {
   return res;
 }
 
+/**
+ * Rolls back a transaction
+ * @return
+ */
 int crunchTxn::rollback() {
   int res = 0;
   for(auto table : this->tables) {

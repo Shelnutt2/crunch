@@ -152,14 +152,11 @@ private:
     std::string transactionDirectory;
     int schemaFileDescriptor;
     int dataFileDescriptor;
-    //FILE* deleteFilePointer;
-    //int deleteFileDescriptor;
     int dataFileSize;
 
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
     // Position variables
-    //int currentRowNumber;
     int records;
     int numFields;
     const capnp::word *dataPointer;
