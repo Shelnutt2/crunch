@@ -42,9 +42,9 @@ size_t getFilesize(const char* filename);
  * @param dir
  * @return error code
  */
-int createDirectory(std::string dir);
+int create_directory(std::string dir);
 
-int remove_directory(const char *path);
+int remove_directory(std::string path);
 
 std::vector<std::string> read_directory(const std::string& name);
 

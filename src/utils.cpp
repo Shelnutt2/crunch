@@ -64,7 +64,7 @@ size_t getFilesize(const char* filename) {
  * @param dir
  * @return error code
  */
-int createDirectory(std::string dir) {
+int create_directory(std::string dir) {
   mode_t nMode = 0755; // UNIX style permissions
   int nError = 0;
 #if defined(_WIN32)
@@ -90,9 +90,10 @@ int rmDirectory(std::string dir) {
   return nError;
 }*/
 
-int remove_directory(const char *path) {
+int remove_directory(std::string pathString) {
+  const char* path = pathString.c_str();
   DIR *d = opendir(path);
-  size_t path_len = strlen(path);
+  size_t path_len = pathString.length();
   int r = -1;
 
   if (d) {

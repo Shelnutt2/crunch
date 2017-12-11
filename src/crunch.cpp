@@ -746,6 +746,13 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 
+  /* Delete Any files existing in transaction directory on open,
+   * these are incomplete transactions possibly from a crashed session.
+   */
+  remove_directory(transactionDirectory);
+  create_directory(transactionDirectory);
+
+
 
   // Catch errors from capnp or libkj
   // TODO handle errors gracefully.
@@ -815,9 +822,9 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
-  createDirectory(name);
+  create_directory(name);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
-  createDirectory(transactionDirectory);
+  create_directory(transactionDirectory);
   // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
