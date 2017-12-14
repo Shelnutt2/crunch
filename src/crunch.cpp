@@ -69,7 +69,7 @@ bool crunch::mmapData(std::string fileName) {
   // Get size of data file needed for mmaping
   dataFileSize = getFilesize(fileName.c_str());
   // Only mmap if we have data
-  if(is_fd_valid(dataFileDescriptor)) {
+  if(isFdValid(dataFileDescriptor)) {
     my_close(dataFileDescriptor,0);
     dataFileDescriptor = 0;
   }
@@ -644,7 +644,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
         txn->tablesInUse--;
         //Check to see if this is last table in transaction
         if(txn->tablesInUse == 0) {
-          if (txn->commit_or_rollback()) {
+          if (txn->commitOrRollback()) {
             rc = HA_ERR_INTERNAL_ERROR;
           }
           thd_set_ha_data(thd, crunch_hton, NULL);
@@ -658,7 +658,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
 
 int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
-  std::vector<std::string> files_in_directory = read_directory(folderName);
+  std::vector<std::string> files_in_directory = readDirectory(folderName);
 
   char name_buff[FN_REFLEN];
 
@@ -691,7 +691,7 @@ int crunch::findTableFiles(std::string folderName) {
         ret = readDeletesIntoMap(deleteFileDescriptor);
         if (ret)
           return ret;
-        if (is_fd_valid(deleteFileDescriptor)) {
+        if (isFdValid(deleteFileDescriptor)) {
           ret = my_close(deleteFileDescriptor, 0);
           deleteFileDescriptor = 0;
         }
@@ -741,8 +741,8 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   /* Delete Any files existing in transaction directory on open,
    * these are incomplete transactions possibly from a crashed session.
    */
-  remove_directory(transactionDirectory);
-  create_directory(transactionDirectory);
+  removeDirectory(transactionDirectory);
+  createDirectory(transactionDirectory);
 
 
 
@@ -814,9 +814,9 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
-  create_directory(name);
+  createDirectory(name);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
-  create_directory(transactionDirectory);
+  createDirectory(transactionDirectory);
   // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
@@ -858,7 +858,7 @@ int crunch::delete_table(const char *name)
 {
   DBUG_ENTER("crunch::delete_table");
   DBUG_PRINT("info", ("Delete for table: %s", name));
-  remove_directory(name);
+  removeDirectory(name);
   DBUG_RETURN(0);
 }
 
@@ -881,7 +881,7 @@ static int crunch_commit(handlerton *hton, THD *thd, bool all)
   if (all)
   {
     if(txn != NULL) {
-      ret = txn->commit_or_rollback();
+      ret = txn->commitOrRollback();
       thd_set_ha_data(thd, hton, NULL);
       delete txn;
     }

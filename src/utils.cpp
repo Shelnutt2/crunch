@@ -64,7 +64,7 @@ size_t getFilesize(const char* filename) {
  * @param dir
  * @return error code
  */
-int create_directory(std::string dir) {
+int createDirectory(std::string dir) {
   mode_t nMode = 0755; // UNIX style permissions
   int nError = 0;
 #if defined(_WIN32)
@@ -75,7 +75,7 @@ int create_directory(std::string dir) {
   return nError;
 }
 
-int remove_directory(std::string pathString) {
+int removeDirectory(std::string pathString) {
   const char* path = pathString.c_str();
   DIR *d = opendir(path);
   size_t path_len = pathString.length();
@@ -106,7 +106,7 @@ int remove_directory(std::string pathString) {
 
         if (!stat(buf, &statbuf)) {
           if (S_ISDIR(statbuf.st_mode)) {
-            r2 = remove_directory(buf);
+            r2 = removeDirectory(buf);
           }
           else {
             r2 = unlink(buf);
@@ -130,7 +130,7 @@ int remove_directory(std::string pathString) {
  * @param name
  * @return vector of files/directories in directory
  */
-std::vector<std::string> read_directory(const std::string& name)
+std::vector<std::string> readDirectory(const std::string &name)
 {
   std::vector<std::string> v;
 #if defined(_WIN32)
@@ -156,7 +156,7 @@ std::vector<std::string> read_directory(const std::string& name)
   return v;
 }
 
-int is_fd_valid(int fd)
+int isFdValid(int fd)
 {
   return fd > 0 && (fcntl(fd, F_GETFD) != -1 || errno != EBADF);
 }

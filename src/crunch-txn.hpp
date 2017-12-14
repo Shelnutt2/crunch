@@ -37,7 +37,7 @@ public:
 
     int begin();
 
-    int commit_or_rollback();
+    int commitOrRollback();
 
     int commit();
 

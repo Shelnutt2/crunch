@@ -27,9 +27,9 @@ crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory
 crunchTxn::~crunchTxn() {
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
-    if (is_fd_valid(file->transactionDataFileDescriptor))
+    if (isFdValid(file->transactionDataFileDescriptor))
       my_close(file->transactionDataFileDescriptor, 0);
-    if (is_fd_valid(file->transactionDeleteFileDescriptor))
+    if (isFdValid(file->transactionDeleteFileDescriptor))
       my_close(file->transactionDeleteFileDescriptor, 0);
 
     delete file;
@@ -95,7 +95,7 @@ int crunchTxn::begin() {
                                           TABLE_DATA_EXTENSION,
                                           MY_REPLACE_EXT | MY_UNPACK_FILENAME);
 
-    if(!is_fd_valid(file->transactionDataFileDescriptor)) {
+    if(!isFdValid(file->transactionDataFileDescriptor)) {
       file->transactionDataFileDescriptor = my_create(file->transactionDataFile.c_str(), 0,
                                                       O_RDWR | O_TRUNC, MYF(MY_WME));
     }
@@ -104,7 +104,7 @@ int crunchTxn::begin() {
                                             TABLE_DELETE_EXTENSION,
                                             MY_REPLACE_EXT | MY_UNPACK_FILENAME);
 
-    if(!is_fd_valid(file->transactionDeleteFileDescriptor)) {
+    if(!isFdValid(file->transactionDeleteFileDescriptor)) {
       file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
                                                         O_RDWR | O_TRUNC, MYF(MY_WME));
     }
@@ -118,7 +118,7 @@ int crunchTxn::begin() {
  * Attempts to commit the transaction, rolls back on any errors.
  * @return
  */
-int crunchTxn::commit_or_rollback() {
+int crunchTxn::commitOrRollback() {
   int res;
   if (this->isTxFailed) {
     this->rollback();
@@ -139,7 +139,7 @@ int crunchTxn::commit() {
 
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
-    if (is_fd_valid(file->transactionDataFileDescriptor)) {
+    if (isFdValid(file->transactionDataFileDescriptor)) {
       res = my_close(file->transactionDataFileDescriptor, 0);
       if (!res)
         file->transactionDataFileDescriptor = 0;
@@ -152,7 +152,7 @@ int crunchTxn::commit() {
     }
 
 
-    if (is_fd_valid(file->transactionDeleteFileDescriptor)) {
+    if (isFdValid(file->transactionDeleteFileDescriptor)) {
       res = my_close(file->transactionDeleteFileDescriptor, 0);
       if (!res)
         file->transactionDeleteFileDescriptor = 0;
@@ -178,7 +178,7 @@ int crunchTxn::rollback() {
   int res = 0;
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
-    if (is_fd_valid(file->transactionDataFileDescriptor)) {
+    if (isFdValid(file->transactionDataFileDescriptor)) {
       res = my_close(file->transactionDataFileDescriptor, 0);
       if (!res)
         file->transactionDataFileDescriptor = 0;
@@ -188,7 +188,7 @@ int crunchTxn::rollback() {
     res = my_delete(file->transactionDataFile.c_str(), 0);
     if (res)
       return res;
-    if (is_fd_valid(file->transactionDeleteFileDescriptor)) {
+    if (isFdValid(file->transactionDeleteFileDescriptor)) {
       res = my_close(file->transactionDeleteFileDescriptor, 0);
       if (!res)
         file->transactionDeleteFileDescriptor = 0;

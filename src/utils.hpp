@@ -42,12 +42,12 @@ size_t getFilesize(const char* filename);
  * @param dir
  * @return error code
  */
-int create_directory(std::string dir);
+int createDirectory(std::string dir);
 
-int remove_directory(std::string path);
+int removeDirectory(std::string path);
 
-std::vector<std::string> read_directory(const std::string& name);
+std::vector<std::string> readDirectory(const std::string &name);
 
-int is_fd_valid(int fd);
+int isFdValid(int fd);
 
 #endif //CRUNCH_UTILS_HPP
