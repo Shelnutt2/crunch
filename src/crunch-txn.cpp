@@ -141,12 +141,18 @@ int crunchTxn::commit() {
     filesForTransaction *file = table.second;
     if (isFdValid(file->transactionDataFileDescriptor)) {
       res = my_close(file->transactionDataFileDescriptor, 0);
-      if (!res)
+      if (res)
         file->transactionDataFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDataFile.c_str()) > 0) {
-      my_rename(file->transactionDataFile.c_str(), fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
-                                                       TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME), 0);
+      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
+                                         TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+      res = my_rename(file->transactionDataFile.c_str(), renameFile.c_str(),  0);
+      // If rename was not successful return and rollback
+      if (res)
+        return res;
+      // Set new filename in case another table rollback fails and we need to roll this back
+      file->transactionDataFile = renameFile;
     } else {
       my_delete(file->transactionDataFile.c_str(), 0);
     }
@@ -154,13 +160,18 @@ int crunchTxn::commit() {
 
     if (isFdValid(file->transactionDeleteFileDescriptor)) {
       res = my_close(file->transactionDeleteFileDescriptor, 0);
-      if (!res)
+      if (res)
         file->transactionDeleteFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDeleteFile.c_str()) > 0) {
-      my_rename(file->transactionDeleteFile.c_str(), fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
-                                                         TABLE_DELETE_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME),
-                0);
+      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
+                                         TABLE_DELETE_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+      res = my_rename(file->transactionDeleteFile.c_str(), renameFile.c_str(), 0);
+      // If rename was not successful return and rollback
+      if (res)
+        return res;
+      // Set new filename in case another table rollback fails and we need to roll this back
+      file->transactionDeleteFile = renameFile;
     } else {
       my_delete(file->transactionDeleteFile.c_str(), 0);
     }
