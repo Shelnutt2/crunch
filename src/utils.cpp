@@ -78,7 +78,7 @@ int createDirectory(std::string dir) {
 int removeDirectory(std::string pathString) {
   const char* path = pathString.c_str();
   DIR *d = opendir(path);
-  size_t path_len = pathString.length();
+  size_t path_len = strlen(path);
   int r = -1;
 
   if (d) {

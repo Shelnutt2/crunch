@@ -738,14 +738,6 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 
-  /* Delete Any files existing in transaction directory on open,
-   * these are incomplete transactions possibly from a crashed session.
-   */
-  removeDirectory(transactionDirectory);
-  createDirectory(transactionDirectory);
-
-
-
   // Catch errors from capnp or libkj
   // TODO handle errors gracefully.
   try {
