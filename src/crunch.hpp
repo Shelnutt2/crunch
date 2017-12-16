@@ -6,6 +6,8 @@
 #ifndef CRUNCH_CRUNCH_HPP
 #define CRUNCH_CRUNCH_HPP
 
+#define MYSQL_SERVER 1 // required for THD class
+
 #include <my_global.h>           /* ulonglong */
 #include <thr_lock.h>            /* THR_LOCK, THR_LOCK_DATA */
 #include <handler.h>             /* handler */
@@ -15,6 +17,7 @@
 #include <memory>                /* unique_ptr */
 #include <cstdint>               /* uint64_t */
 #include <string>                /* std::string */
+#include <vector>                /* std::vector */
 #include <unordered_map> /*Unordered map*/
 
 #include <capnp/schema.h>        /* Cap'n Proto Schema */
@@ -24,10 +27,6 @@
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
 #include "crunchrowlocation.capnp.h"
-
-#define TABLE_SCHEME_EXTENSION ".capnp"
-#define TABLE_DATA_EXTENSION ".capnpd"
-#define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -39,6 +38,12 @@ static PSI_mutex_key ex_key_mutex_Example_share_mutex;
   The option values can be specified in the CREATE TABLE at the end:
   CREATE TABLE ( ... ) *here*
 */
+
+static int crunch_commit(handlerton *hton, THD *thd, bool all);
+static int crunch_rollback(handlerton *hton, THD *thd, bool all);
+
+// Handler for crunch engine
+extern handlerton *crunch_hton;
 
 /** @brief
  Crunch_share is a class that will be shared among all open handlers.
@@ -84,9 +89,11 @@ class crunch : public handler {
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
     int delete_table(const char *name);
-    int readDeletesIntoMap(FILE* deleteFilePointer);
+    int readDeletesIntoMap(int deleteFileDescriptor);
     bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
     void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
+    int start_stmt(THD *thd, thr_lock_type lock_type);
+    static int disconnect(handlerton *hton, MYSQL_THD thd);
 
     static inline bool
     row_is_fixed_length(TABLE *table)
@@ -123,8 +130,10 @@ private:
 
     void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
-    bool mmapData();
-    bool mremapData();
+    bool mmapData(std::string fileName);
+    bool mremapData(std::string fileName);
+    bool unmmapData();
+    int findTableFiles(std::string folderName);
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -137,18 +146,17 @@ private:
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
-    std::string dataFile;
+    std::string currentDataFile;
+    std::vector<std::string> dataFiles;
     std::string deleteFile;
+    std::string transactionDirectory;
     int schemaFileDescriptor;
     int dataFileDescriptor;
-    FILE* deleteFilePointer;
-    //int deleteFileDescriptor;
     int dataFileSize;
 
     std::unique_ptr<capnp::FlatArrayMessageReader> dataMessageReader; // Last capnp message read from data file
 
     // Position variables
-    //int currentRowNumber;
     int records;
     int numFields;
     const capnp::word *dataPointer;
@@ -156,6 +164,9 @@ private:
     const capnp::word *dataFileStart;
 
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<uint64_t,CrunchRowLocation::Reader>>> deleteMap;
+    unsigned long dataFileIndex;
+    int mode;
+    std::string name;
 };
 
 
