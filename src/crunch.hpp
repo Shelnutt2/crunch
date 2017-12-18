@@ -75,7 +75,8 @@ class crunch : public handler {
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
     void build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls);
-    int write(uchar *buf);
+    int write_buffer(uchar *buf);
+    int write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow);
     int write_row(uchar *buf);
     int delete_row(const uchar *buf);
     int update_row(const uchar *old_data, uchar *new_data);

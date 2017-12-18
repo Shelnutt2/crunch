@@ -217,6 +217,7 @@ int crunch::rnd_init(bool scan) {
   }
   dataPointer = dataFileStart;
   dataPointerNext = dataFileStart;
+
   DBUG_RETURN(0);
 }
 
@@ -418,44 +419,65 @@ void crunch::build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::B
   }
 }
 
-int crunch::write(uchar *buf) {
+int crunch::write_buffer(uchar *buf) {
+  int ret = 0;
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 
-  crunchTxn *txn= (crunchTxn *)thd_get_ha_data(ha_thd(), crunch_hton);
-
   // Use a message builder for reach row
   try {
-    capnp::MallocMessageBuilder tableRow;
+    std::unique_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
 
     // Use stored structure
-    capnp::DynamicStruct::Builder row = tableRow.initRoot<capnp::DynamicStruct>(capnpRowSchema);
+    capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(capnpRowSchema);
 
     capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
     build_row(&row, &nulls);
 
+    ret = write_message(std::move(tableRow));
+
+  } catch (kj::Exception e) {
+    std::cerr << "exception: " << e.getFile() << ", line: "
+              << e.getLine() << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    ret = -321;
+  } catch (const std::exception &e) {
+    // Log errors
+    std::cerr << " write error: " << e.what() << std::endl;
+    ret = 321;
+  }
+
+  // Reset bitmap to original
+  dbug_tmp_restore_column_map(table->read_set, old_map);
+
+  return ret;
+}
+
+int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow) {
+
+  crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
+
+  // Use a message builder for reach row
+  try {
     // Set the fileDescriptor to the end of the file
     lseek(txn->getTransactionDataFileDescriptor(this->name), 0, SEEK_END);
     //Write message to file
-    capnp::writeMessageToFd(txn->getTransactionDataFileDescriptor(this->name), tableRow);
+    capnp::writeMessageToFd(txn->getTransactionDataFileDescriptor(this->name), *tableRow);
 
   } catch (kj::Exception e) {
     std::cerr << "exception: " << e.getFile() << ", line: "
             << e.getLine() << ", type: " << (int)e.getType()
             << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
-    return -321;
+    return -322;
   } catch(const std::exception& e) {
     // Log errors
     std::cerr << " write error: " << e.what() << std::endl;
     txn->isTxFailed = true;
-    return 321;
+    return 322;
   }
 
-
-  // Reset bitmap to original
-  dbug_tmp_restore_column_map(table->read_set, old_map);
   return 0;
 }
 
@@ -465,7 +487,7 @@ int crunch::write_row(uchar *buf) {
   // Lock basic mutex
   mysql_mutex_lock(&share->mutex);
 
-  int ret = write(buf);
+  int ret = write_buffer(buf);
   // Unlock basic mutex
   mysql_mutex_unlock(&share->mutex);
   DBUG_RETURN(ret);
@@ -497,7 +519,7 @@ int crunch::update_row(const uchar *old_data, uchar *new_data) {
   if(ret)
     DBUG_RETURN(ret);
   // If delete was successful, write new row
-  ret = write(new_data);
+  ret = write_buffer(new_data);
   DBUG_RETURN(ret);
 }
 
