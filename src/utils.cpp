@@ -60,6 +60,16 @@ size_t getFilesize(const char* filename) {
 }
 
 /**
+ * Get the size of a file
+ * @param filename
+ * @return
+ */
+size_t checkFileExists(const char* filename) {
+  struct stat st;
+  return (stat(filename, &st) == 0);
+}
+
+/**
  * Create a directory
  * @param dir
  * @return error code

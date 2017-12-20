@@ -9,9 +9,10 @@
 #include <string>
 #include <vector>
 
-#define TABLE_SCHEME_EXTENSION ".capnp"
+#define TABLE_CONSOLIDATE_DIRECTORY "consolidate"
 #define TABLE_DATA_EXTENSION ".capnpd"
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
+#define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
 
 /** Split string into a vector by regex
@@ -36,6 +37,13 @@ std::string parseFileNameForStructName(std::string filepathName);
  * @return
  */
 size_t getFilesize(const char* filename);
+
+/**
+ * Get the size of a file
+ * @param filename
+ * @return
+ */
+size_t checkFileExists(const char* filename);
 
 /**
  * Create a directory
