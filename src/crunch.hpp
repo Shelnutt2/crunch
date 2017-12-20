@@ -27,6 +27,7 @@
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
 #include "crunchrowlocation.capnp.h"
+#include "crunch-txn.hpp"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -135,6 +136,7 @@ private:
     bool mremapData(std::string fileName);
     bool unmmapData();
     int findTableFiles(std::string folderName);
+    int consolidateFiles(crunchTxn *txm);
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -168,6 +170,8 @@ private:
     unsigned long dataFileIndex;
     int mode;
     std::string name;
+
+    bool runConsolidateFiles;
 };
 
 

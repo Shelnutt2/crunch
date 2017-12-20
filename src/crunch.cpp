@@ -13,8 +13,6 @@
 #include <sql_priv.h>
 #include <sql_class.h>
 
-#include "crunch-txn.hpp"
-
 #ifdef UNKNOWN
 #undef UNKNOWN
 #endif
@@ -206,6 +204,7 @@ int crunch::rnd_init(bool scan) {
   DBUG_ENTER("crunch::rnd_init");
   // Lock basic mutex
   mysql_mutex_lock(&share->mutex);
+  runConsolidateFiles = false;
   // Reset row number
   //currentRowNumber = -1;
   // Reset starting mmap position
@@ -218,6 +217,11 @@ int crunch::rnd_init(bool scan) {
   dataPointer = dataFileStart;
   dataPointerNext = dataFileStart;
 
+  if(dataFiles.size() > 2) {
+    crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
+    runConsolidateFiles = true;
+    txn->type = CONSOLIDATE;
+  }
   DBUG_RETURN(0);
 }
 
@@ -240,6 +244,12 @@ int crunch::rnd_next(uchar *buf) {
     if(!checkForDeletedRow(currentDataFile, rowStartLocation)) {
       dataMessageReader = std::move(tmpDataMessageReader);
       //currentRowNumber++;
+
+      if(runConsolidateFiles) {
+        std::unique_ptr<capnp::MallocMessageBuilder> message = std::make_unique<capnp::MallocMessageBuilder>();
+        message->setRoot(dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+        write_message(std::move(message));
+      }
 
       capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
     } else {
@@ -311,7 +321,7 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
       rc = HA_ERR_RECORD_DELETED;
     }
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -323,6 +333,7 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
 int crunch::rnd_end() {
   DBUG_ENTER("crunch::rnd_end");
   // Unlock basic mutex
+  runConsolidateFiles = false;
   mysql_mutex_unlock(&share->mutex);
   DBUG_RETURN(0);
 }
@@ -438,7 +449,7 @@ int crunch::write_buffer(uchar *buf) {
     ret = write_message(std::move(tableRow));
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     ret = -321;
@@ -460,13 +471,20 @@ int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow)
 
   // Use a message builder for reach row
   try {
+
+    int fd = 0;
+    if(runConsolidateFiles) {
+      fd = txn->getTransactionConsolidateFileDescriptor(this->name);
+    } else {
+      fd = txn->getTransactionDataFileDescriptor(this->name);
+    }
     // Set the fileDescriptor to the end of the file
-    lseek(txn->getTransactionDataFileDescriptor(this->name), 0, SEEK_END);
+    lseek(fd, 0, SEEK_END);
     //Write message to file
-    capnp::writeMessageToFd(txn->getTransactionDataFileDescriptor(this->name), *tableRow);
+    capnp::writeMessageToFd(fd, *tableRow);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
             << e.getLine() << ", type: " << (int)e.getType()
             << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
@@ -495,6 +513,12 @@ int crunch::write_row(uchar *buf) {
 
 int crunch::delete_row(const uchar *buf) {
   DBUG_ENTER("crunch::delete_row");
+
+  // If a row is being deleted, we need to abort on any consolidation
+  runConsolidateFiles = false;
+  crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
+  txn->rollbackConsolidate(name);
+
 
   //todo: check for if delete file exists
   //use crunch-delete to handle all logic, just call crunch_delete(current_row_message, offset start, end)
@@ -550,7 +574,7 @@ void crunch::position(const uchar *record) {
     memcpy(ref, &len, sizeof(uint64_t));
     memcpy(ref+sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -668,6 +692,9 @@ int crunch::external_lock(THD *thd, int lock_type) {
         if(txn->tablesInUse == 0) {
           if (txn->commitOrRollback()) {
             rc = HA_ERR_INTERNAL_ERROR;
+          } else if (runConsolidateFiles) {
+            rc = consolidateFiles(txn);
+            runConsolidateFiles = false;
           }
           thd_set_ha_data(thd, crunch_hton, NULL);
           delete txn;
@@ -678,6 +705,43 @@ int crunch::external_lock(THD *thd, int lock_type) {
   DBUG_RETURN(rc);
 }
 
+int crunch::consolidateFiles(crunchTxn *txn) {
+  char name_buff[FN_REFLEN];
+  std::string consolidateDirectory = name + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
+  createDirectory(consolidateDirectory);
+  size_t to_length = 0;
+  int res;
+  unmmapData();
+  for(auto oldFile : dataFiles) {
+    if (oldFile == txn->getTransactionDataFile(name)) {
+      continue;
+    }
+    if (oldFile == txn->getTransactionConsolidateFile(name)) {
+      continue;
+    }
+    dirname_part(name_buff, oldFile.c_str(), &to_length);
+    std::string currentFileDirectory = name_buff;
+    auto posFound = oldFile.find(currentFileDirectory);
+    if(posFound != std::string::npos) {
+      std::string fileName = oldFile.substr(+currentFileDirectory.length());
+      std::string consolidateDirectory = currentFileDirectory + TABLE_CONSOLIDATE_DIRECTORY;
+
+      std::string renameFile = fn_format(name_buff, fileName.c_str(), consolidateDirectory.c_str(),
+                                         TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+      res = my_rename(oldFile.c_str(), renameFile.c_str(), 0);
+      // If rename was not successful return and rollback
+    } else {
+      std::cerr << "Could not properly split folder and filename for " << oldFile << std::endl;
+      res = -112;
+    }
+    if (res)
+      return res;
+  }
+  removeDirectory(consolidateDirectory);
+  findTableFiles(name);
+  return res;
+}
+
 int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = readDirectory(folderName);
@@ -686,8 +750,10 @@ int crunch::findTableFiles(std::string folderName) {
 
   int ret = 0;
 
+  dataFiles.clear();
+
   for(auto it : files_in_directory) {
-    //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
+    std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
     auto extensionIndex = it.find(".");
     if(extensionIndex != std::string::npos) {
       std::string extension = it.substr(extensionIndex);
@@ -772,14 +838,14 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
     //my_close(schemaFileDescriptor, 0);
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     close();
     DBUG_RETURN(-2);
   } catch(const std::exception& e) {
     // Log errors
-    std::cerr << name << " errored when open file with: " << e.what() << std::endl;
+    std::cerr << name << "errored when open file with: " << e.what() << std::endl;
     close();
     DBUG_RETURN(2);
   };
@@ -802,10 +868,6 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
   // Close open files
-  if (dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
-    perror("Error un-mmapping the file");
-    DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
-  }
   unmmapData();
   DBUG_RETURN(0);
 }

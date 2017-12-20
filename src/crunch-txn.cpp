@@ -19,6 +19,7 @@ crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory
   this->tables[baseDirectory] = file;
   this->isTxFailed = false;
   this->tablesInUse=1;
+  this->type = WRITE;
 }
 
 /**
@@ -31,6 +32,8 @@ crunchTxn::~crunchTxn() {
       my_close(file->transactionDataFileDescriptor, 0);
     if (isFdValid(file->transactionDeleteFileDescriptor))
       my_close(file->transactionDeleteFileDescriptor, 0);
+    if (isFdValid(file->transactionConsolidateFileDescriptor))
+      my_close(file->transactionConsolidateFileDescriptor, 0);
 
     delete file;
   }
@@ -67,6 +70,12 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
                                           MY_REPLACE_EXT | MY_UNPACK_FILENAME);
   file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
                                                     O_RDWR | O_TRUNC, MYF(MY_WME));
+
+  file->transactionConsolidateFile = fn_format(name_buff, (file->baseFileName + "-consolidate").c_str(), file->transactionDirectory.c_str(),
+                                        TABLE_DATA_EXTENSION,
+                                        MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+  file->transactionConsolidateFileDescriptor = my_create(file->transactionConsolidateFile.c_str(), 0,
+                                                  O_RDWR | O_TRUNC, MYF(MY_WME));
 
   this->tables[baseDirectory] = file;
   this->tablesInUse++;
@@ -107,6 +116,15 @@ int crunchTxn::begin() {
     if(!isFdValid(file->transactionDeleteFileDescriptor)) {
       file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
                                                         O_RDWR | O_TRUNC, MYF(MY_WME));
+    }
+
+    file->transactionConsolidateFile = fn_format(name_buff, (file->baseFileName+"-consolidate").c_str(), file->transactionDirectory.c_str(),
+                                          TABLE_DATA_EXTENSION,
+                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+
+    if(!isFdValid(file->transactionConsolidateFileDescriptor)) {
+      file->transactionConsolidateFileDescriptor = my_create(file->transactionConsolidateFile.c_str(), 0,
+                                                      O_RDWR | O_TRUNC, MYF(MY_WME));
     }
 
   }
@@ -154,7 +172,8 @@ int crunchTxn::commit() {
       // Set new filename in case another table rollback fails and we need to roll this back
       file->transactionDataFile = renameFile;
     } else {
-      my_delete(file->transactionDataFile.c_str(), 0);
+      if(checkFileExists(file->transactionDataFile.c_str()))
+        my_delete(file->transactionDataFile.c_str(), 0);
     }
 
 
@@ -173,7 +192,27 @@ int crunchTxn::commit() {
       // Set new filename in case another table rollback fails and we need to roll this back
       file->transactionDeleteFile = renameFile;
     } else {
-      my_delete(file->transactionDeleteFile.c_str(), 0);
+      if(checkFileExists(file->transactionDeleteFile.c_str()))
+        my_delete(file->transactionDeleteFile.c_str(), 0);
+    }
+
+    if (isFdValid(file->transactionConsolidateFileDescriptor)) {
+      res = my_close(file->transactionConsolidateFileDescriptor, 0);
+      if (res)
+        file->transactionConsolidateFileDescriptor = 0;
+    }
+    if (getFilesize(file->transactionConsolidateFile.c_str()) > 0) {
+      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
+                                         TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+      res = my_rename(file->transactionConsolidateFile.c_str(), renameFile.c_str(),  0);
+      // If rename was not successful return and rollback
+      if (res)
+        return res;
+      // Set new filename in case another table rollback fails and we need to roll this back
+      file->transactionConsolidateFile = renameFile;
+    } else {
+      if(checkFileExists(file->transactionConsolidateFile.c_str()))
+        my_delete(file->transactionConsolidateFile.c_str(), 0);
     }
   }
 
@@ -196,7 +235,8 @@ int crunchTxn::rollback() {
     }
     if (res)
       return res;
-    res = my_delete(file->transactionDataFile.c_str(), 0);
+    if(checkFileExists(file->transactionDataFile.c_str()))
+      res = my_delete(file->transactionDataFile.c_str(), 0);
     if (res)
       return res;
     if (isFdValid(file->transactionDeleteFileDescriptor)) {
@@ -206,12 +246,35 @@ int crunchTxn::rollback() {
     }
     if (res)
       return res;
-    res = my_delete(file->transactionDeleteFile.c_str(), 0);
+    if(checkFileExists(file->transactionDeleteFile.c_str()))
+      res = my_delete(file->transactionDeleteFile.c_str(), 0);
     if (res)
       return res;
+
+    res = rollbackConsolidate(table.first);
+    if(res)
+        return res;
   }
   this->inProgress = false;
   this->tablesInUse = 0;
+  return res;
+}
+
+int crunchTxn::rollbackConsolidate(std::string name) {
+  int res = 0;
+  filesForTransaction* file;
+  if(this->tables.find(name) != this->tables.end()) {
+    file = this->tables[name];
+  }
+  if (isFdValid(file->transactionConsolidateFileDescriptor)) {
+    res = my_close(file->transactionConsolidateFileDescriptor, 0);
+    if (!res)
+      file->transactionConsolidateFileDescriptor = 0;
+  }
+  if (res)
+    return res;
+  if(checkFileExists(file->transactionConsolidateFile.c_str()))
+    res = my_delete(file->transactionConsolidateFile.c_str(), 0);
   return res;
 }
 
@@ -227,4 +290,32 @@ int crunchTxn::getTransactionDeleteFileDescriptor(std::string name) {
     return this->tables[name]->transactionDeleteFileDescriptor;
   }
   return -101;
+}
+
+int crunchTxn::getTransactionConsolidateFileDescriptor(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionConsolidateFileDescriptor;
+  }
+  return -102;
+}
+
+std::string crunchTxn::getTransactionDataFile(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionDataFile;
+  }
+  return "";
+}
+
+std::string crunchTxn::getTransactionDeleteFile(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionDeleteFile;
+  }
+  return "";
+}
+
+std::string crunchTxn::getTransactionConsolidateFile(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionConsolidateFile;
+  }
+  return "";
 }

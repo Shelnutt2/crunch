@@ -36,7 +36,7 @@ int crunch::readDeletesIntoMap(int deleteFileDescriptor) {
         }
       } catch (kj::Exception e) {
         if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
-          std::cerr << "exception: " << e.getFile() << ", line: "
+          std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1;
@@ -93,7 +93,7 @@ void crunch::markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, u
     capnp::writeMessageToFd(txn->getTransactionDeleteFileDescriptor(this->name), deleteRow);
   } catch (kj::Exception e) {
     if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
-      std::cerr << "exception: " << e.getFile() << ", line: "
+      std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
                 << e.getLine() << ", type: " << (int) e.getType()
                 << ", e.what(): " << e.getDescription().cStr() << std::endl;
       txn->isTxFailed = true;

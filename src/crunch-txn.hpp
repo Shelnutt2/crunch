@@ -24,8 +24,18 @@ typedef struct filesForTransaction {
 
     int transactionDeleteFileDescriptor;
 
+    std::string transactionConsolidateFile;
+
+    int transactionConsolidateFileDescriptor;
+
     std::string baseFileName;
 } filesForTransaction;
+
+enum transactionType {
+    WRITE,
+    READ,
+    CONSOLIDATE,
+};
 
 class crunchTxn {
 
@@ -49,6 +59,16 @@ public:
 
     int getTransactionDeleteFileDescriptor(std::string name);
 
+    int getTransactionConsolidateFileDescriptor(std::string name);
+
+    std::string getTransactionDataFile(std::string name);
+
+    std::string getTransactionDeleteFile(std::string name);
+
+    std::string getTransactionConsolidateFile(std::string name);
+
+    int rollbackConsolidate(std::string name);
+
     enum_tx_isolation tx_isolation;
 
     bool isTxFailed;
@@ -62,6 +82,8 @@ public:
     std::unordered_map<std::string, filesForTransaction*> tables;
 
     std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;
+
+    transactionType type;
 };
 
 
