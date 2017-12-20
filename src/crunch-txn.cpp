@@ -108,7 +108,6 @@ int crunchTxn::begin() {
       file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
                                                         O_RDWR | O_TRUNC, MYF(MY_WME));
     }
-
   }
   this->inProgress = true;
   return ret;
@@ -122,7 +121,7 @@ int crunchTxn::commitOrRollback() {
   int res;
   if (this->isTxFailed) {
     this->rollback();
-    res = false;
+    res = -111;
   } else {
     res = this->commit();
   }
@@ -141,7 +140,7 @@ int crunchTxn::commit() {
     filesForTransaction *file = table.second;
     if (isFdValid(file->transactionDataFileDescriptor)) {
       res = my_close(file->transactionDataFileDescriptor, 0);
-      if (res)
+      if (!res)
         file->transactionDataFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDataFile.c_str()) > 0) {
@@ -154,13 +153,14 @@ int crunchTxn::commit() {
       // Set new filename in case another table rollback fails and we need to roll this back
       file->transactionDataFile = renameFile;
     } else {
-      my_delete(file->transactionDataFile.c_str(), 0);
+      if(checkFileExists(file->transactionDataFile.c_str()))
+        my_delete(file->transactionDataFile.c_str(), 0);
     }
 
 
     if (isFdValid(file->transactionDeleteFileDescriptor)) {
       res = my_close(file->transactionDeleteFileDescriptor, 0);
-      if (res)
+      if (!res)
         file->transactionDeleteFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDeleteFile.c_str()) > 0) {
@@ -173,7 +173,8 @@ int crunchTxn::commit() {
       // Set new filename in case another table rollback fails and we need to roll this back
       file->transactionDeleteFile = renameFile;
     } else {
-      my_delete(file->transactionDeleteFile.c_str(), 0);
+      if(checkFileExists(file->transactionDeleteFile.c_str()))
+        my_delete(file->transactionDeleteFile.c_str(), 0);
     }
   }
 
@@ -196,7 +197,8 @@ int crunchTxn::rollback() {
     }
     if (res)
       return res;
-    res = my_delete(file->transactionDataFile.c_str(), 0);
+    if(checkFileExists(file->transactionDataFile.c_str()))
+      res = my_delete(file->transactionDataFile.c_str(), 0);
     if (res)
       return res;
     if (isFdValid(file->transactionDeleteFileDescriptor)) {
@@ -206,7 +208,8 @@ int crunchTxn::rollback() {
     }
     if (res)
       return res;
-    res = my_delete(file->transactionDeleteFile.c_str(), 0);
+    if(checkFileExists(file->transactionDeleteFile.c_str()))
+      res = my_delete(file->transactionDeleteFile.c_str(), 0);
     if (res)
       return res;
   }
@@ -227,4 +230,18 @@ int crunchTxn::getTransactionDeleteFileDescriptor(std::string name) {
     return this->tables[name]->transactionDeleteFileDescriptor;
   }
   return -101;
+}
+
+std::string crunchTxn::getTransactionDataFile(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionDataFile;
+  }
+  return "";
+}
+
+std::string crunchTxn::getTransactionDeleteFile(std::string name) {
+  if(this->tables.find(name) != this->tables.end()) {
+    return this->tables[name]->transactionDeleteFile;
+  }
+  return "";
 }

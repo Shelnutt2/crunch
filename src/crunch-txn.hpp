@@ -49,6 +49,10 @@ public:
 
     int getTransactionDeleteFileDescriptor(std::string name);
 
+    std::string getTransactionDataFile(std::string name);
+
+    std::string getTransactionDeleteFile(std::string name);
+
     enum_tx_isolation tx_isolation;
 
     bool isTxFailed;

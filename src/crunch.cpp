@@ -13,8 +13,6 @@
 #include <sql_priv.h>
 #include <sql_class.h>
 
-#include "crunch-txn.hpp"
-
 #ifdef UNKNOWN
 #undef UNKNOWN
 #endif
@@ -207,9 +205,11 @@ int crunch::rnd_init(bool scan) {
   // Lock basic mutex
   mysql_mutex_lock(&share->mutex);
   // Reset row number
-  //currentRowNumber = -1;
   // Reset starting mmap position
   findTableFiles(folderName);
+  if(dataFiles.size() == 0) {
+    DBUG_RETURN(HA_ERR_END_OF_FILE);
+  }
   if(currentDataFile != dataFiles[0] || dataPointer == NULL) {
     unmmapData();
     dataFileIndex = 0;
@@ -221,35 +221,27 @@ int crunch::rnd_init(bool scan) {
   DBUG_RETURN(0);
 }
 
-int crunch::rnd_next(uchar *buf) {
-  int rc = 0;
-  DBUG_ENTER("crunch::rnd_next");
-
-  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
-  my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
-
+std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
+  DBUG_ENTER("crunch::rnd_row");
   //Set datapointer
   dataPointer = dataPointerNext;
 
   // Before reading we make sure we have not reached the end of the mmap'ed space, which is the end of the file on disk
   if(dataPointer != dataFileStart+(dataFileSize / sizeof(capnp::word))) {
     //Read data
-    auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word)))));
+    auto tmpDataMessageReader = std::make_unique<capnp::FlatArrayMessageReader>(kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer+(dataFileSize / sizeof(capnp::word))));
     dataPointerNext = tmpDataMessageReader->getEnd();
     uint64_t rowStartLocation = (dataPointer - dataFileStart);
     if(!checkForDeletedRow(currentDataFile, rowStartLocation)) {
-      dataMessageReader = std::move(tmpDataMessageReader);
+      DBUG_RETURN(tmpDataMessageReader);
       //currentRowNumber++;
-
-      capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
     } else {
-      dbug_tmp_restore_column_map(table->write_set, orig);
-      DBUG_RETURN(rnd_next(buf));
+      DBUG_RETURN(rnd_row(err));
     }
-
   } else { //End of data file
     if (dataFileIndex >= dataFiles.size()-1) {
-      rc = HA_ERR_END_OF_FILE;
+      *err = HA_ERR_END_OF_FILE;
+      DBUG_RETURN(NULL);
     } else {
       DBUG_PRINT("info", ("End of file, moving to next"));
       unmmapData();
@@ -258,10 +250,24 @@ int crunch::rnd_next(uchar *buf) {
       mmapData(dataFiles[dataFileIndex]);
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
-      dbug_tmp_restore_column_map(table->write_set, orig);
-      DBUG_RETURN(rnd_next(buf));
+      DBUG_RETURN(rnd_row(err));
     }
   }
+  DBUG_RETURN(NULL);
+}
+
+int crunch::rnd_next(uchar *buf) {
+  int rc = 0;
+  DBUG_ENTER("crunch::rnd_next");
+
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *orig= dbug_tmp_use_all_columns(table, table->write_set);
+
+  dataMessageReader = rnd_row(&rc);
+
+  if(!rc)
+    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
   DBUG_RETURN(rc);
@@ -311,7 +317,7 @@ int crunch::rnd_pos(uchar * buf, uchar *pos) {
       rc = HA_ERR_RECORD_DELETED;
     }
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -426,6 +432,8 @@ int crunch::write_buffer(uchar *buf) {
 
   // Use a message builder for reach row
   try {
+    crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
+
     std::unique_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
 
     // Use stored structure
@@ -435,10 +443,10 @@ int crunch::write_buffer(uchar *buf) {
 
     build_row(&row, &nulls);
 
-    ret = write_message(std::move(tableRow));
+    ret = write_message(std::move(tableRow), txn);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     ret = -321;
@@ -454,19 +462,19 @@ int crunch::write_buffer(uchar *buf) {
   return ret;
 }
 
-int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow) {
-
-  crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
+int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn) {
 
   // Use a message builder for reach row
   try {
+
+    int fd = txn->getTransactionDataFileDescriptor(this->name);
     // Set the fileDescriptor to the end of the file
-    lseek(txn->getTransactionDataFileDescriptor(this->name), 0, SEEK_END);
+    lseek(fd, 0, SEEK_END);
     //Write message to file
-    capnp::writeMessageToFd(txn->getTransactionDataFileDescriptor(this->name), *tableRow);
+    capnp::writeMessageToFd(fd, *tableRow);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
             << e.getLine() << ", type: " << (int)e.getType()
             << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
@@ -550,7 +558,7 @@ void crunch::position(const uchar *record) {
     memcpy(ref, &len, sizeof(uint64_t));
     memcpy(ref+sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -678,6 +686,75 @@ int crunch::external_lock(THD *thd, int lock_type) {
   DBUG_RETURN(rc);
 }
 
+int crunch::consolidateFiles() {
+  DBUG_ENTER("crunch::consolidateFiles");
+  int res = 0;
+  crunchTxn *txn = new crunchTxn(name, transactionDirectory);
+  int err = 0;
+  try {
+    rnd_init(true);
+    txn->begin();
+    while (err != HA_ERR_END_OF_FILE) {
+      std::unique_ptr<capnp::MallocMessageBuilder> message = std::make_unique<capnp::MallocMessageBuilder>();
+      std::unique_ptr<capnp::FlatArrayMessageReader> rowRead = rnd_row(&err);
+      if (rowRead == NULL)
+        break;
+
+      capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema);
+      message->setRoot(messageRoot);
+      write_message(std::move(message), txn);
+    }
+    res = txn->commitOrRollback();
+    rnd_end();
+    if(!res)
+      removeOldFiles(txn);
+  } catch (kj::Exception e) {
+    std::cerr << "close exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
+              << e.getLine() << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    res = -331;
+  } catch (const std::exception &e) {
+    // Log errors
+    std::cerr << "close error: " << e.what() << std::endl;
+    res = 331;
+  }
+  delete txn;
+  DBUG_RETURN(res);
+}
+
+int crunch::removeOldFiles(crunchTxn *txn) {
+  char name_buff[FN_REFLEN];
+  std::string consolidateDirectory = name + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
+  createDirectory(consolidateDirectory);
+  size_t to_length = 0;
+  int res;
+  for(auto oldFile : dataFiles) {
+    if (oldFile == txn->getTransactionDataFile(name)) {
+      continue;
+    }
+    dirname_part(name_buff, oldFile.c_str(), &to_length);
+    std::string currentFileDirectory = name_buff;
+    auto posFound = oldFile.find(currentFileDirectory);
+    if(posFound != std::string::npos) {
+      std::string fileName = oldFile.substr(+currentFileDirectory.length());
+      std::string consolidateDirectory = currentFileDirectory + TABLE_CONSOLIDATE_DIRECTORY;
+
+      std::string renameFile = fn_format(name_buff, fileName.c_str(), consolidateDirectory.c_str(),
+                                         TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+      res = my_rename(oldFile.c_str(), renameFile.c_str(), 0);
+      // If rename was not successful return and rollback
+    } else {
+      std::cerr << "Could not properly split folder and filename for " << oldFile << std::endl;
+      res = -112;
+    }
+    if (res)
+      return res;
+  }
+  removeDirectory(consolidateDirectory);
+  findTableFiles(name);
+  return res;
+}
+
 int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = readDirectory(folderName);
@@ -685,6 +762,8 @@ int crunch::findTableFiles(std::string folderName) {
   char name_buff[FN_REFLEN];
 
   int ret = 0;
+
+  dataFiles.clear();
 
   for(auto it : files_in_directory) {
     //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
@@ -750,14 +829,13 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   findTableFiles(folderName);
 
   dataFileIndex = 0;
-  currentDataFile = dataFiles[dataFileIndex];
+  if(dataFiles.size() > 0) {
+    currentDataFile = dataFiles[dataFileIndex];
+  }
 
   this->name = name;
   // Build file names for ondisk
   baseFilePath = name + std::string("/") + table->s->table_name.str;
-  DBUG_PRINT("info", ("Open for table: %s", baseFilePath.c_str()));
-  currentDataFile = baseFilePath +  TABLE_DATA_EXTENSION;
-
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
 
   // Catch errors from capnp or libkj
@@ -772,14 +850,14 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
     //my_close(schemaFileDescriptor, 0);
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: "
+    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ <<", exception_line: "
               << e.getLine() << ", type: " << (int)e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     close();
     DBUG_RETURN(-2);
   } catch(const std::exception& e) {
     // Log errors
-    std::cerr << name << " errored when open file with: " << e.what() << std::endl;
+    std::cerr << name << "errored when open file with: " << e.what() << std::endl;
     close();
     DBUG_RETURN(2);
   };
@@ -801,13 +879,13 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
  */
 int crunch::close(void){
   DBUG_ENTER("crunch::close");
+  int res = 0;
   // Close open files
-  if (dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
-    perror("Error un-mmapping the file");
-    DBUG_PRINT("crunch::close", ("Error: %s", strerror(errno)));
+  if(dataFiles.size() > 2) {
+    consolidateFiles();
   }
   unmmapData();
-  DBUG_RETURN(0);
+  DBUG_RETURN(res);
 }
 
 /**
