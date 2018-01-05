@@ -28,6 +28,7 @@
 
 #include "crunchrowlocation.capnp.h"
 #include "crunch-txn.hpp"
+#include "crunch-sysvars.hpp"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -173,7 +174,7 @@ private:
     int mode;
     std::string name;
 
-    bool runConsolidateFiles;
+    ha_table_option_struct *options;
 };
 
 

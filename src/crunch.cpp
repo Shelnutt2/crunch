@@ -8,6 +8,7 @@
 #include <string>
 
 #include "capnp-mysql.hpp"
+#include "crunch-sysvars.hpp"
 #include "utils.hpp"
 #include <sys/mman.h>
 #include <sql_priv.h>
@@ -26,6 +27,7 @@ static const char *crunch_exts[] = {
     TABLE_DATA_EXTENSION,
     NullS
 };
+
 
 // Create crunch object
 static handler* crunch_create_handler(handlerton *hton,
@@ -51,7 +53,7 @@ static int crunch_init_func(void *p)
   crunch_hton->tablefile_extensions = crunch_exts;
   crunch_hton->commit = crunch_commit;
   crunch_hton->rollback = crunch_rollback;
-  //crunch_hton->close_connection= crunch::disconnect;
+  crunch_hton->table_options = crunch_table_options;
 
   DBUG_RETURN(0);
 }
@@ -818,10 +820,11 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   if (!(share = get_share()))
     DBUG_RETURN(1);
   thr_lock_data_init(&share->lock,&lock,NULL);
-#ifndef DBUG_OFF
-  ha_table_option_struct *options= table->s->option_struct;
+  options = table->s->option_struct;
 
-  //DBUG_ASSERT(options);
+  std::cerr << options->consolidation_threshold << std::endl;
+#ifndef DBUG_OFF
+  DBUG_ASSERT(options);
 #endif
   this->mode = mode;
   folderName = name;
@@ -881,7 +884,7 @@ int crunch::close(void){
   DBUG_ENTER("crunch::close");
   int res = 0;
   // Close open files
-  if(dataFiles.size() > 2) {
+  if(dataFiles.size() > options->consolidation_threshold) {
     consolidateFiles();
   }
   unmmapData();
@@ -899,10 +902,13 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   char name_buff[FN_REFLEN];
   File create_file;
-  ha_table_option_struct *options= table_arg->s->option_struct;
+  options= table_arg->s->option_struct;
   DBUG_ENTER("crunch::create");
   DBUG_PRINT("info", ("Create for table: %s", name));
-//DBUG_ASSERT(options);
+  std::cerr << options->consolidation_threshold << std::endl;
+#ifndef DBUG_OFF
+  DBUG_ASSERT(options);
+#endif
 
   int err = 0;
   std::string tableName = table_arg->s->table_name.str;
@@ -1047,7 +1053,7 @@ mysql_declare_plugin(crunch)
             NULL,                                         /* Plugin Deinit */
             0x0001,                                       /* version number (0.1) */
             NULL,                                         /* status variables */
-            NULL,                                         /* system variables */
+            crunch_system_variables,                      /* system variables */
             NULL,                                         /* config options */
             0,                                            /* flags */
         }
@@ -1064,7 +1070,7 @@ maria_declare_plugin(crunch)
             NULL,                                         /* Plugin Deinit */
             0x0001,                                       /* version number (0.1) */
             NULL,                                         /* status variables */
-            NULL,                                         /* system variables */
+            crunch_system_variables,                      /* system variables */
             "0.1",                                        /* string version */
             MariaDB_PLUGIN_MATURITY_EXPERIMENTAL          /* maturity */
         }
