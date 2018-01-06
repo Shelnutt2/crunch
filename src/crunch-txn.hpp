@@ -65,7 +65,7 @@ public:
 
     std::unordered_map<std::string, filesForTransaction*> tables;
 
-    std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;
+    std::uint64_t startTimeNanoSeconds;
 };
 
 

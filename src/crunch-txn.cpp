@@ -54,7 +54,7 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   file->baseDirectory = baseDirectory;
   file->transactionDirectory = transactionDirectory;
 
-  file->baseFileName = std::to_string(this->startTimeMilliSeconds.count()) + "-" + uuid.str();
+  file->baseFileName = std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
 
   file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
                                         TABLE_DATA_EXTENSION,
@@ -83,13 +83,13 @@ int crunchTxn::begin() {
   char name_buff[FN_REFLEN];
   int ret = 0;
 
-  this->startTimeMilliSeconds = std::chrono::duration_cast<std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch());
+  this->startTimeNanoSeconds = std::chrono::duration_cast<std::chrono::nanoseconds >(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
   uuid = sole::uuid4();
   //For each table we need to create files in disk to hold transaction data
   for(auto table : this->tables) {
     filesForTransaction *file = table.second;
-    file->baseFileName = std::to_string(this->startTimeMilliSeconds.count()) + "-" + uuid.str();
+    file->baseFileName = std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
 
     file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
                                           TABLE_DATA_EXTENSION,
