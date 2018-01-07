@@ -27,6 +27,8 @@
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
 
 #include "crunchrowlocation.capnp.h"
+#include "crunch-txn.hpp"
+#include "crunch-sysvars.hpp"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -71,11 +73,13 @@ class crunch : public handler {
     };
     ~crunch() noexcept(true){};
     int rnd_init(bool scan);
+    std::unique_ptr<capnp::FlatArrayMessageReader> rnd_row(int *err);
     int rnd_next(uchar *buf);
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
     void build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls);
-    int write(uchar *buf);
+    int write_buffer(uchar *buf);
+    int write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn);
     int write_row(uchar *buf);
     int delete_row(const uchar *buf);
     int update_row(const uchar *old_data, uchar *new_data);
@@ -134,6 +138,8 @@ private:
     bool mremapData(std::string fileName);
     bool unmmapData();
     int findTableFiles(std::string folderName);
+    int removeOldFiles(crunchTxn *txn);
+    int consolidateFiles();
 
     THR_LOCK_DATA lock;      ///< MySQL lock
     crunch_share* share;    ///< Shared lock info
@@ -167,6 +173,8 @@ private:
     unsigned long dataFileIndex;
     int mode;
     std::string name;
+
+    ha_table_option_struct *options;
 };
 
 

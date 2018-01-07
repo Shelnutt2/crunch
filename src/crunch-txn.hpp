@@ -49,6 +49,10 @@ public:
 
     int getTransactionDeleteFileDescriptor(std::string name);
 
+    std::string getTransactionDataFile(std::string name);
+
+    std::string getTransactionDeleteFile(std::string name);
+
     enum_tx_isolation tx_isolation;
 
     bool isTxFailed;
@@ -61,7 +65,7 @@ public:
 
     std::unordered_map<std::string, filesForTransaction*> tables;
 
-    std::chrono::duration<long long int, std::nano> startTimeMilliSeconds;
+    std::uint64_t startTimeNanoSeconds;
 };
 
 
