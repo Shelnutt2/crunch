@@ -42,9 +42,6 @@ static PSI_mutex_key ex_key_mutex_Example_share_mutex;
   CREATE TABLE ( ... ) *here*
 */
 
-static int crunch_commit(handlerton *hton, THD *thd, bool all);
-static int crunch_rollback(handlerton *hton, THD *thd, bool all);
-
 // Handler for crunch engine
 extern handlerton *crunch_hton;
 

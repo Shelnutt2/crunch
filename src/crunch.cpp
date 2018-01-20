@@ -19,6 +19,9 @@
 #undef UNKNOWN
 #endif
 
+static int crunch_commit(handlerton *hton, THD *thd, bool all);
+static int crunch_rollback(handlerton *hton, THD *thd, bool all);
+
 // Handler for crunch engine
 handlerton *crunch_hton;
 
