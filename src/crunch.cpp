@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sql_priv.h>
 #include <sql_class.h>
+#include <regex>
 
 #ifdef UNKNOWN
 #undef UNKNOWN
@@ -773,15 +774,15 @@ int crunch::findTableFiles(std::string folderName) {
     if(extensionIndex != std::string::npos) {
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
-      if(extension == TABLE_SCHEME_EXTENSION) {
+      if(std::regex_match(extension, schemaFileExtensionRegex)) {
         schemaFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
-                  TABLE_SCHEME_EXTENSION,  MY_REPLACE_EXT|MY_UNPACK_FILENAME);
+                  TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
       } else if (extension  == TABLE_DATA_EXTENSION) {
         bool fileExists = false;
         std::string newDataFile = folderName + "/" + it;
         for(auto existingFile : dataFiles) {
           if(existingFile == newDataFile)
-            fileExists = true;
+          fileExists = true;
         }
         if(!fileExists)
           dataFiles.push_back(newDataFile);
@@ -822,7 +823,6 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   thr_lock_data_init(&share->lock,&lock,NULL);
   options = table->s->option_struct;
 
-  std::cerr << options->consolidation_threshold << std::endl;
 #ifndef DBUG_OFF
   DBUG_ASSERT(options);
 #endif
@@ -918,12 +918,13 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   // Cap'n Proto schema's require the first character to be upper case for struct names
   tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
-  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err);
+  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err, 0, 1);
 
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
   folderName = name;
   // Let mysql create the file for us
-  if ((create_file= my_create(fn_format(name_buff, baseFilePath.c_str(), "", TABLE_SCHEME_EXTENSION,
+  if ((create_file= my_create(fn_format(name_buff, (baseFilePath).c_str(), "",
+                                        (std::string(".1")+TABLE_SCHEME_EXTENSION).c_str(),
                                         MY_REPLACE_EXT|MY_UNPACK_FILENAME),0,
                               O_RDWR | O_TRUNC,MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);

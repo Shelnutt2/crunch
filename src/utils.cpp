@@ -20,6 +20,7 @@
 
 #endif
 
+std::regex schemaFileExtensionRegex(".(\\d+)"+std::string(TABLE_SCHEME_EXTENSION));
 
 /** Split string into a vector by regex
  *
