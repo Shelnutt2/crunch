@@ -11,10 +11,12 @@
  * @param baseDirectory
  * @param transactionDirectory
  */
-crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory) {
+crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory, int schemaVersion) {
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
   file->transactionDirectory = transactionDirectory;
+  file->schemaVersion = schemaVersion;
+  file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
 
   this->tables[baseDirectory] = file;
   this->isTxFailed = false;
@@ -42,7 +44,7 @@ crunchTxn::~crunchTxn() {
  * @param transactionDirectory
  * @return
  */
-int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory) {
+int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory, int schemaVersion) {
   // If table already exists don't re-register it
   if(this->tables.find(baseDirectory) != this->tables.end()) {
     return 0;
@@ -53,11 +55,13 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
   file->transactionDirectory = transactionDirectory;
+  file->schemaVersion = schemaVersion;
+  file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
 
   file->baseFileName = std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
 
   file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
-                                        TABLE_DATA_EXTENSION,
+                                        file->dataExtension.c_str(),
                                         MY_REPLACE_EXT | MY_UNPACK_FILENAME);
   file->transactionDataFileDescriptor = my_create(file->transactionDataFile.c_str(), 0,
                                                   O_RDWR | O_TRUNC, MYF(MY_WME));
@@ -92,7 +96,7 @@ int crunchTxn::begin() {
     file->baseFileName = std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
 
     file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
-                                          TABLE_DATA_EXTENSION,
+                                          file->dataExtension.c_str(),
                                           MY_REPLACE_EXT | MY_UNPACK_FILENAME);
 
     if(!isFdValid(file->transactionDataFileDescriptor)) {
@@ -145,7 +149,8 @@ int crunchTxn::commit() {
     }
     if (getFilesize(file->transactionDataFile.c_str()) > 0) {
       std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
-                                         TABLE_DATA_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+                                         file->dataExtension.c_str(),
+                                         MY_REPLACE_EXT | MY_UNPACK_FILENAME);
       res = my_rename(file->transactionDataFile.c_str(), renameFile.c_str(),  0);
       // If rename was not successful return and rollback
       if (res)

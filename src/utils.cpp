@@ -21,6 +21,7 @@
 #endif
 
 std::regex schemaFileExtensionRegex(".(\\d+)"+std::string(TABLE_SCHEME_EXTENSION));
+std::regex dataFileExtensionRegex(".(\\d+)"+std::string(TABLE_DATA_EXTENSION));
 
 /** Split string into a vector by regex
  *

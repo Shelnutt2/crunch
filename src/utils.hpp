@@ -17,6 +17,7 @@
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
 
 extern std::regex schemaFileExtensionRegex;
+extern std::regex dataFileExtensionRegex;
 
 /** Split string into a vector by regex
  *

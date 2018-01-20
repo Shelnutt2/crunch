@@ -25,6 +25,7 @@
 #include <capnp/message.h>       /* Cap'n Proto Message */
 #include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
+#include <map>
 
 #include "crunchrowlocation.capnp.h"
 #include "crunch-txn.hpp"
@@ -146,12 +147,15 @@ private:
     crunch_share* get_share(); ///< Get the share
 
     ::capnp::ParsedSchema capnpParsedSchema;
+    std::map<int, ::capnp::ParsedSchema> capnpParsedSchemas;
     ::capnp::StructSchema capnpRowSchema;
+    std::map<int, ::capnp::StructSchema> capnpRowSchemas;
     ::capnp::SchemaParser parser;
 
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
+    std::map<int, std::string> schemaFiles;
     std::string currentDataFile;
     std::vector<std::string> dataFiles;
     std::string deleteFile;
@@ -175,6 +179,7 @@ private:
     std::string name;
 
     ha_table_option_struct *options;
+    int schemaVersion;
 };
 
 
