@@ -19,7 +19,13 @@
 
 #include <field.h>
 
+#ifndef NULL_COLUMN_FIELD
 #define NULL_COLUMN_FIELD "nullColumns"
+#endif
+
+#ifndef CAPNP_SCHEMA_VERSION_COLUMN_FIELD
+#define CAPNP_SCHEMA_VERSION_COLUMN_FIELD "capnpSchemaVersion"
+#endif
 
 uint64_t generateRandomId();
 
@@ -28,8 +34,8 @@ std::string buildCapnpSchema(std::map<u_int, std::unordered_map<std::string, std
                              std::string structName, int *err, uint64_t id = 0);
 
 
-std::string buildCapnpLimitedSchema(Field **field,
-                             std::string structName, int *err, uint64_t id = 0);
+std::string
+buildCapnpLimitedSchema(Field **field, std::string structName, int *err, uint64_t id, uint64_t schemaVersion);
 
 std::string getCapnpTypeFromField(Field *field);
 

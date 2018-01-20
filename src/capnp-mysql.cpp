@@ -108,7 +108,8 @@ std::string getCapnpTypeFromField(Field *field) {
  * @param id
  * @return
  */
-std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id) {
+std::string
+buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion) {
 
   if(id == 0) {
     id = generateRandomId();
@@ -117,9 +118,10 @@ std::string buildCapnpLimitedSchema(Field **fields, std::string structName, int 
   output += "struct " + structName + " {\n";
 
   output += "  " + std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
+  output += "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :Int16 = "+std::to_string(schemaVersion)+";\n";
   for (Field **field = fields; *field; field++)
   {
-    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index+1)  + " :" + getCapnpTypeFromField(*field) + ";\n";
+    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index+2)  + " :" + getCapnpTypeFromField(*field) + ";\n";
 
   }
 
