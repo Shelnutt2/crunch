@@ -967,14 +967,11 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   folderName = name;
 
   int err = 0;
-  std::string tableName = table_arg->s->table_name.str;
   createDirectory(name);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
-  // Cap'n Proto schema's require the first character to be upper case for struct names
-  tableName[0] = toupper(tableName[0]);
   // Build capnp proto schema
-  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, tableName, &err, 0, 1);
+  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, parseFileNameForStructName(name), &err, 0, 1);
 
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
   // Let mysql create the file for us
