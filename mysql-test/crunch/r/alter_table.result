@@ -24,6 +24,6 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `column1` int(11) DEFAULT NULL,
-  `column2New` varchar(1024) DEFAULT NULL
+  `column2New` varchar(255) DEFAULT NULL
 ) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
 DROP TABLE t1;
