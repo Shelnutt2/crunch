@@ -130,7 +130,7 @@ class crunch : public handler {
 
 private:
 
-    void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
+    bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
     bool mmapData(std::string fileName);
     bool mremapData(std::string fileName);

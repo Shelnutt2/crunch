@@ -83,7 +83,7 @@ bool crunch::mmapData(std::string fileName) {
     if ((void *) dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mmap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for " << fileName << " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for table " << name << ", file: " << fileName << " , error: " << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
       dataFileDescriptor = 0;
       DBUG_RETURN(false);
@@ -124,7 +124,7 @@ bool crunch::mremapData(std::string fileName) {
     if ((void *) dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mremap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for " << currentDataFile << " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for table " << name << ", file: " << currentDataFile << " , error: " << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
       dataFileDescriptor = 0;
       DBUG_RETURN(false);
@@ -147,61 +147,71 @@ bool crunch::mremapData(std::string fileName) {
 #endif
 }
 
-void crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
+bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
+  bool ret = true;
+  try {
+    //Get nulls
+    auto nulls = dynamicStructReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
 
-  //Get nulls
-  auto nulls = dynamicStructReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
+    // Loop through each field to get the data
+    int colNumber = 0;
+    std::vector<bool> nullBits;
+    for (Field **field = table->field; *field; field++) {
+      std::string capnpFieldName = camelCase((*field)->field_name);
+      auto capnpField = dynamicStructReader.get(capnpFieldName);
 
-  // Loop through each field to get the data
-  int colNumber = 0;
-  std::vector<bool> nullBits;
-  for (Field **field = table->field; *field; field++) {
-    std::string capnpFieldName = camelCase((*field)->field_name);
-    auto capnpField = dynamicStructReader.get(capnpFieldName);
+      if (!nulls[colNumber].as<bool>()) {
+        (*field)->set_notnull();
 
-    if (!nulls[colNumber].as<bool>()) {
-      (*field)->set_notnull();
-
-      switch (capnpField.getType()) {
-        case capnp::DynamicValue::VOID:
-          break;
-        case capnp::DynamicValue::BOOL:
-          (*field)->store(capnpField.as<bool>());
-          break;
-        case capnp::DynamicValue::INT:
-          (*field)->store(capnpField.as<int64_t>(), false);
-          break;
-        case capnp::DynamicValue::UINT:
-          (*field)->store(capnpField.as<uint64_t>(), true);
-          break;
-        case capnp::DynamicValue::FLOAT:
-          (*field)->store(capnpField.as<double>());
-          break;
-        case capnp::DynamicValue::DATA: {
-          kj::ArrayPtr<const char> chars;
-          chars = capnpField.as<capnp::Data>().asChars();
-          (*field)->store(chars.begin(), chars.size(), &my_charset_utf8_general_ci);
-          break;
+        switch (capnpField.getType()) {
+          case capnp::DynamicValue::VOID:
+            break;
+          case capnp::DynamicValue::BOOL:
+            (*field)->store(capnpField.as<bool>());
+            break;
+          case capnp::DynamicValue::INT:
+            (*field)->store(capnpField.as<int64_t>(), false);
+            break;
+          case capnp::DynamicValue::UINT:
+            (*field)->store(capnpField.as<uint64_t>(), true);
+            break;
+          case capnp::DynamicValue::FLOAT:
+            (*field)->store(capnpField.as<double>());
+            break;
+          case capnp::DynamicValue::DATA: {
+            kj::ArrayPtr<const char> chars;
+            chars = capnpField.as<capnp::Data>().asChars();
+            (*field)->store(chars.begin(), chars.size(), &my_charset_utf8_general_ci);
+            break;
+          }
+          case capnp::DynamicValue::TEXT: {
+            const char *row_string = capnpField.as<capnp::Text>().cStr();
+            (*field)->store(row_string, strlen(row_string), &my_charset_utf8_general_ci);
+            break;
+          }
+          case capnp::DynamicValue::LIST:
+          case capnp::DynamicValue::ENUM:
+          case capnp::DynamicValue::STRUCT:
+          case capnp::DynamicValue::CAPABILITY:
+          case capnp::DynamicValue::UNKNOWN:
+          case capnp::DynamicValue::ANY_POINTER:
+            break;
         }
-        case capnp::DynamicValue::TEXT: {
-          const char *row_string = capnpField.as<capnp::Text>().cStr();
-          (*field)->store(row_string, strlen(row_string), &my_charset_utf8_general_ci);
-          break;
-        }
-        case capnp::DynamicValue::LIST:
-        case capnp::DynamicValue::ENUM:
-        case capnp::DynamicValue::STRUCT:
-        case capnp::DynamicValue::CAPABILITY:
-        case capnp::DynamicValue::UNKNOWN:
-        case capnp::DynamicValue::ANY_POINTER:
-          break;
+      } else {
+        (*field)->set_null();
       }
-    } else {
-      (*field)->set_null();
+      colNumber++;
     }
-    colNumber++;
+  } catch (kj::Exception& e) {
+    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+              << e.getLine() << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    return false;
+  } catch (std::exception& e) {
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): " << e.what() << std::endl;
+    return false;
   }
-
+  return ret;
 }
 
 int crunch::rnd_init(bool scan) {
@@ -284,8 +294,8 @@ int crunch::rnd_next(uchar *buf) {
 
   dataMessageReader = rnd_row(&rc);
 
-  if (!rc)
-    capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+  if (!rc && !capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
+      DBUG_RETURN(-43);
 
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
@@ -331,12 +341,13 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
           kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       dataMessageReader = std::move(tmpDataMessageReader);
 
-      capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema));
+      if(!capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
+        DBUG_RETURN(-44);
     } else {
       rc = HA_ERR_RECORD_DELETED;
     }
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -465,13 +476,13 @@ int crunch::write_buffer(uchar *buf) {
     ret = write_message(std::move(tableRow), txn);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     ret = -321;
   } catch (const std::exception &e) {
     // Log errors
-    std::cerr << " write error: " << e.what() << std::endl;
+    std::cerr << "write error for table " << name << ": " << e.what() << std::endl;
     ret = 321;
   }
 
@@ -493,14 +504,14 @@ int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow,
     capnp::writeMessageToFd(fd, *tableRow);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
     return -322;
   } catch (const std::exception &e) {
     // Log errors
-    std::cerr << " write error: " << e.what() << std::endl;
+    std::cerr << "write error for table " << name << ": " << e.what() << std::endl;
     txn->isTxFailed = true;
     return 322;
   }
@@ -577,7 +588,7 @@ void crunch::position(const uchar *record) {
     memcpy(ref, &len, sizeof(uint64_t));
     memcpy(ref + sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
   } catch (kj::Exception e) {
-    std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -727,7 +738,7 @@ int crunch::consolidateFiles() {
     if (!res)
       removeOldFiles(txn);
   } catch (kj::Exception e) {
-    std::cerr << "close exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     res = -331;
@@ -822,7 +833,7 @@ int crunch::findTableFiles(std::string folderName) {
 
           //my_close(schemaFileDescriptor, 0);
         } catch (kj::Exception e) {
-          std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+          std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1000;
