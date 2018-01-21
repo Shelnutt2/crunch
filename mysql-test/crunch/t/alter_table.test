@@ -1,17 +1,29 @@
 --echo #
 --echo # The purpose of this test is to test alter tables
 --echo #
---echo # Basic Alter
+--echo # Basic Alter Column Name ALGORITHM=COPY
 
 CREATE TABLE t1 (
   column1 integer,
   column2 varchar(255)
 ) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
-INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
-INSERT INTO t1 VALUES (3,'dmFsdWUy');
-INSERT INTO t1 VALUES (5,'dmFsdWU');
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
 select column2 FROM t1 ORDER BY column1;
-ALTER TABLE t1 CHANGE COLUMN column2 column2New varchar(255);
+ALTER TABLE t1 CHANGE COLUMN column2 column2New varchar(255), ALGORITHM=COPY;
 select column2New FROM t1 ORDER BY column1;
 show create table t1;
-DROP TABLE t1;
+
+--echo # Basic Alter Column Shrink Varchar ALGORITHM=COPY
+ALTER TABLE t1 MODIFY COLUMN column2New varchar(1), ALGORITHM=COPY;
+select column2New FROM t1 ORDER BY column1;
+show create table t1;
+
+--echo # Basic Rename Table
+RENAME TABLE t1 TO t1New;
+show create table t1New;
+
+--echo # Alter Table options
+ALTER TABLE t1New CONSOLIDATION_THRESHOLD=2, ALGORITHM=COPY;
+show create table t1New;
+
+DROP TABLE t1New;
