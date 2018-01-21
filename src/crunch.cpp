@@ -14,12 +14,14 @@
 #include <sql_priv.h>
 #include <sql_class.h>
 #include <regex>
+#include <fstream>
 
 #ifdef UNKNOWN
 #undef UNKNOWN
 #endif
 
 static int crunch_commit(handlerton *hton, THD *thd, bool all);
+
 static int crunch_rollback(handlerton *hton, THD *thd, bool all);
 
 // Handler for crunch engine
@@ -83,7 +85,8 @@ bool crunch::mmapData(std::string fileName) {
     if ((void *) dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mmap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for table " << name << ", file: " << fileName << " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for table " << name << ", file: " << fileName << " , error: " << strerror(errno)
+                << std::endl;
       my_close(dataFileDescriptor, 0);
       dataFileDescriptor = 0;
       DBUG_RETURN(false);
@@ -124,7 +127,8 @@ bool crunch::mremapData(std::string fileName) {
     if ((void *) dataPointer == MAP_FAILED) {
       perror("Error ");
       DBUG_PRINT("crunch::mremap", ("Error: %s", strerror(errno)));
-      std::cerr << "mmaped failed for table " << name << ", file: " << currentDataFile << " , error: " << strerror(errno) << std::endl;
+      std::cerr << "mmaped failed for table " << name << ", file: " << currentDataFile << " , error: "
+                << strerror(errno) << std::endl;
       my_close(dataFileDescriptor, 0);
       dataFileDescriptor = 0;
       DBUG_RETURN(false);
@@ -202,13 +206,15 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       }
       colNumber++;
     }
-  } catch (kj::Exception& e) {
-    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+  } catch (kj::Exception &e) {
+    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     return false;
-  } catch (std::exception& e) {
-    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): " << e.what() << std::endl;
+  } catch (std::exception &e) {
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+              << e.what() << std::endl;
     return false;
   }
   return ret;
@@ -221,7 +227,7 @@ int crunch::rnd_init(bool scan) {
   // Reset row number
   // Reset starting mmap position
   int ret = findTableFiles(folderName);
-  if(ret)
+  if (ret)
     DBUG_RETURN(ret);
   if (dataFiles.size() == 0) {
     DBUG_RETURN(HA_ERR_END_OF_FILE);
@@ -295,7 +301,7 @@ int crunch::rnd_next(uchar *buf) {
   dataMessageReader = rnd_row(&rc);
 
   if (!rc && !capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
-      DBUG_RETURN(-43);
+    DBUG_RETURN(-43);
 
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
@@ -341,13 +347,14 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
           kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       dataMessageReader = std::move(tmpDataMessageReader);
 
-      if(!capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
+      if (!capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
         DBUG_RETURN(-44);
     } else {
       rc = HA_ERR_RECORD_DELETED;
     }
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -476,7 +483,8 @@ int crunch::write_buffer(uchar *buf) {
     ret = write_message(std::move(tableRow), txn);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     ret = -321;
@@ -504,7 +512,8 @@ int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow,
     capnp::writeMessageToFd(fd, *tableRow);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
@@ -588,7 +597,8 @@ void crunch::position(const uchar *record) {
     memcpy(ref, &len, sizeof(uint64_t));
     memcpy(ref + sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
@@ -738,7 +748,8 @@ int crunch::consolidateFiles() {
     if (!res)
       removeOldFiles(txn);
   } catch (kj::Exception e) {
-    std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+    std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+              << __LINE__ << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     res = -331;
@@ -802,7 +813,7 @@ int crunch::findTableFiles(std::string folderName) {
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
       std::smatch schemaMatches;
       // Must check for TABLE_DATA_EXTENSION first, since a regex for schema will match a substring of the data files
-      if (std::regex_match(extension, dataFileExtensionRegex)){
+      if (std::regex_match(extension, dataFileExtensionRegex)) {
         bool fileExists = false;
         std::string newDataFile = folderName + "/" + it;
         for (auto existingFile : dataFiles) {
@@ -833,7 +844,8 @@ int crunch::findTableFiles(std::string folderName) {
 
           //my_close(schemaFileDescriptor, 0);
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": "<< e.getFile() << ", line: " << __FILE__ << ":" << __LINE__ << ", exception_line: "
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1000;
@@ -901,7 +913,7 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   this->name = name;
 
   ret = findTableFiles(folderName);
-  if(ret)
+  if (ret)
     DBUG_RETURN(ret);
 
   // Set the schemaVersion based on the latest we found when opening the table
@@ -1022,6 +1034,108 @@ int crunch::delete_table(const char *name) {
   DBUG_PRINT("info", ("Delete for table: %s", name));
   removeDirectory(name);
   DBUG_RETURN(0);
+}
+
+/**
+ *
+ * Override default rename table
+ *
+ * @param from
+ * @param to
+ * @return
+ */
+int crunch::rename_table(const char *from, const char *to) {
+  DBUG_ENTER("crunch::rename_table");
+  DBUG_PRINT("info", ("Rename table from %s to %s", from, to));
+
+  // rename directory
+  int ret = rename(from, to);
+  if (ret) {
+    DBUG_PRINT("crunch::rename_table", ("Error: %s", strerror(errno)));
+    std::cerr << "error in table " << name << " renaming from " << from
+              << " to " << to << ", error: " << strerror(errno) << std::endl;
+    DBUG_RETURN(-21);
+  }
+
+
+  // update cap'n proto schema name
+  std::string oldSchemaName = parseFileNameForStructName(from);
+  std::string newSchemaName = parseFileNameForStructName(to);
+
+  std::vector<std::string> files_in_directory = readDirectory(to);
+
+  char name_buff[FN_REFLEN];
+
+  // Find all cap'n proto schemas to update
+  for (auto it : files_in_directory) {
+    auto extensionIndex = it.find(".");
+    if (extensionIndex != std::string::npos) {
+      std::string extension = it.substr(extensionIndex);
+      std::smatch schemaMatches;
+      // Find all schema files
+      if (!std::regex_match(extension, dataFileExtensionRegex) &&
+          std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
+        std::string schemaFile = fn_format(name_buff, it.c_str(), to,
+                                           TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
+        // Rename the existing file
+        ret = rename(schemaFile.c_str(), (schemaFile + ".tmp").c_str());
+        if (ret) {
+          DBUG_PRINT("crunch::rename_table", ("Error: %s", strerror(errno)));
+          std::cerr << "error in table " << name << " renaming from " << from
+                    << " to " << to << ", error: " << strerror(errno) << std::endl;
+          DBUG_RETURN(-22);
+        }
+
+        try {
+          // Write new schema file with name replaced
+          std::ifstream filein(schemaFile + ".tmp");
+          std::ofstream fileout(schemaFile);
+          if (!filein || !fileout) {
+            DBUG_RETURN(-23);
+          }
+
+          std::string strTemp;
+          while (filein >> strTemp) {
+            // if the line matches the old schema name remove it
+            if (strTemp == oldSchemaName) {
+              strTemp = newSchemaName;
+            }
+            strTemp += "\n";
+            fileout << strTemp;
+          }
+          // Delete old schema file
+          my_delete((schemaFile + ".tmp").c_str(), 0);
+
+        } catch (kj::Exception e) {
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", exception_line: "
+                    << e.getLine() << ", type: " << (int) e.getType()
+                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
+          DBUG_RETURN(-24);
+        } catch (const std::invalid_argument &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          DBUG_RETURN(-25);
+        } catch (const std::out_of_range &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          DBUG_RETURN(-26);
+        } catch (const std::exception &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << "errored when open file with: " << e.what() << std::endl;
+          DBUG_RETURN(-27);
+        };
+
+      }
+    }
+  }
+
+  DBUG_RETURN(ret);
 }
 
 int crunch::disconnect(handlerton *hton, MYSQL_THD thd) {

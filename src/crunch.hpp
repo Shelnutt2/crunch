@@ -91,6 +91,7 @@ class crunch : public handler {
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
     int delete_table(const char *name);
+    int rename_table(const char *from, const char *to);
     int readDeletesIntoMap(int deleteFileDescriptor);
     bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
     void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
