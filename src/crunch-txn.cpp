@@ -11,7 +11,7 @@
  * @param baseDirectory
  * @param transactionDirectory
  */
-crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory, int schemaVersion) {
+crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
   file->transactionDirectory = transactionDirectory;
@@ -44,7 +44,7 @@ crunchTxn::~crunchTxn() {
  * @param transactionDirectory
  * @return
  */
-int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory, int schemaVersion) {
+int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
   // If table already exists don't re-register it
   if(this->tables.find(baseDirectory) != this->tables.end()) {
     return 0;

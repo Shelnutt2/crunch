@@ -26,7 +26,7 @@ typedef struct filesForTransaction {
 
     std::string baseFileName;
 
-    int schemaVersion;
+    uint64_t schemaVersion;
 
     std::string dataExtension;
 } filesForTransaction;
@@ -35,7 +35,7 @@ class crunchTxn {
 
 
 public:
-    crunchTxn(std::string baseDirectory, std::string transactionDirectory, int schemaVersion);
+    crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     ~crunchTxn();
 
@@ -47,7 +47,7 @@ public:
 
     int rollback();
 
-    int registerNewTable(std::string baseDirectory, std::string transactionDirectory, int schemaVersion);
+    int registerNewTable(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     int getTransactionDataFileDescriptor(std::string name);
 
