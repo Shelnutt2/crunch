@@ -109,7 +109,7 @@ std::string getCapnpTypeFromField(Field *field) {
  * @return
  */
 std::string
-buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion) {
+buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion, uint64_t minimumCompatibleSchemaVersion) {
 
   if(id == 0) {
     id = generateRandomId();
@@ -126,6 +126,8 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
   }
 
   output += "}";
+
+  output += "\n\nconst minimumCompatibleSchemaVersion :UInt64 = " + std::to_string(minimumCompatibleSchemaVersion) + ";";
 
   return output;
 }
