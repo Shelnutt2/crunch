@@ -64,6 +64,16 @@ public:
     }
 };
 
+typedef struct schema_struct {
+    ::capnp::StructSchema schema;
+    uint64_t minimumCompatibleSchemaVersion;
+} schema;
+
+typedef struct data_struct {
+    std::string fileName;
+    uint64_t schemaVersion;
+} data;
+
 class crunch : public handler {
   public:
     crunch(handlerton *hton, TABLE_SHARE *table_arg):handler(hton, table_arg){
@@ -133,6 +143,7 @@ private:
 
     bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
 
+
     bool mmapData(std::string fileName);
     bool mremapData(std::string fileName);
     bool unmmapData();
@@ -145,17 +156,17 @@ private:
     crunch_share* get_share(); ///< Get the share
 
     ::capnp::ParsedSchema capnpParsedSchema;
-    std::map<int, ::capnp::ParsedSchema> capnpParsedSchemas;
+    std::map<uint64_t, ::capnp::ParsedSchema> capnpParsedSchemas;
     ::capnp::StructSchema capnpRowSchema;
-    std::map<int, ::capnp::StructSchema> capnpRowSchemas;
+    std::map<uint64_t, schema> capnpRowSchemas;
     ::capnp::SchemaParser parser;
 
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
-    std::map<int, std::string> schemaFiles;
+    std::map<uint64_t, std::string> schemaFiles;
     std::string currentDataFile;
-    std::vector<std::string> dataFiles;
+    std::vector<data> dataFiles;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
@@ -177,7 +188,7 @@ private:
     std::string name;
 
     ha_table_option_struct *options;
-    int schemaVersion;
+    uint64_t schemaVersion;
 };
 
 

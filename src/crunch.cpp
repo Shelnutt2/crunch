@@ -232,23 +232,27 @@ int crunch::rnd_init(bool scan) {
   if (dataFiles.size() == 0) {
     DBUG_RETURN(HA_ERR_END_OF_FILE);
   }
-  if (currentDataFile != dataFiles[0] || dataPointer == NULL) {
+  if (currentDataFile != dataFiles[0].fileName || dataPointer == NULL) {
     unmmapData();
     dataFileIndex = 0;
-    mmapData(dataFiles[dataFileIndex]);
-    if (dataFiles.size() > 0) {
-      currentDataFile = dataFiles[dataFileIndex];
-      std::smatch dataFileMatches;
-      if (std::regex_search(currentDataFile, dataFileMatches, dataFileExtensionRegex)) {
-        int dataFileVersion = std::stoi(dataFileMatches[1]);
-        if (capnpRowSchemas.find(dataFileVersion) == capnpRowSchemas.end())
-          DBUG_RETURN(-2);
-        capnpRowSchema = capnpRowSchemas[dataFileVersion];
-      } else {
-        DBUG_RETURN(-3);
+    data dataStruct = dataFiles[dataFileIndex];
+    mmapData(dataStruct.fileName);
+  }
+
+  data dataStruct = dataFiles[dataFileIndex];
+  if (dataFiles.size() > 0) {
+    currentDataFile = dataStruct.fileName;
+    ret = -2;
+    for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
+      if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
+        std::cerr << "Found schema " << i->first << " is compatible with dataStruct.schemaVersion: " << dataStruct.schemaVersion << std::endl;
+        capnpRowSchema = i->second.schema;
+        ret = 0;
+        break;
       }
     }
   }
+
   dataPointer = dataFileStart;
   dataPointerNext = dataFileStart;
 
@@ -281,11 +285,23 @@ std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
       DBUG_PRINT("info", ("End of file, moving to next"));
       unmmapData();
       dataFileIndex++;
-      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataFiles[dataFileIndex].c_str()));
-      mmapData(dataFiles[dataFileIndex]);
+
+      data dataStruct = dataFiles[dataFileIndex];
+      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
+      mmapData(dataStruct.fileName);
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
-      DBUG_RETURN(rnd_row(err));
+      currentDataFile = dataStruct.fileName;
+      *err = -2;
+      for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
+        if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
+          capnpRowSchema = i->second.schema;
+          *err = 0;
+          break;
+        }
+      }
+      if (!*err)
+        DBUG_RETURN(rnd_row(err));
     }
   }
   DBUG_RETURN(NULL);
@@ -330,14 +346,22 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
       DBUG_PRINT("info", ("rnd_pos is in different file"));
       unmmapData();
       for (unsigned long i = 0; i < dataFiles.size(); i++) {
-        if (dataFiles[i] == std::string(rowLocation.getFileName().cStr())) {
+        if (dataFiles[i].fileName == std::string(rowLocation.getFileName().cStr())) {
           dataFileIndex = i;
           break;
         }
       }
-      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataFiles[dataFileIndex].c_str()));
-      mmapData(dataFiles[dataFileIndex]);
-
+      data dataStruct = dataFiles[dataFileIndex];
+      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
+      mmapData(dataStruct.fileName);
+      rc = -2;
+      for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
+        if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
+          capnpRowSchema = i->second.schema;
+          rc = 0;
+          break;
+        }
+      }
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
     }
@@ -474,7 +498,8 @@ int crunch::write_buffer(uchar *buf) {
     std::unique_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
 
     // Use stored structure
-    capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(capnpRowSchema);
+    capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(
+        capnpRowSchemas.rbegin()->second.schema);
 
     capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
@@ -769,22 +794,22 @@ int crunch::removeOldFiles(crunchTxn *txn) {
   size_t to_length = 0;
   int res;
   for (auto oldFile : dataFiles) {
-    if (oldFile == txn->getTransactionDataFile(name)) {
+    if (oldFile.fileName == txn->getTransactionDataFile(name)) {
       continue;
     }
-    dirname_part(name_buff, oldFile.c_str(), &to_length);
+    dirname_part(name_buff, oldFile.fileName.c_str(), &to_length);
     std::string currentFileDirectory = name_buff;
-    auto posFound = oldFile.find(currentFileDirectory);
+    auto posFound = oldFile.fileName.find(currentFileDirectory);
     if (posFound != std::string::npos) {
-      std::string fileName = oldFile.substr(+currentFileDirectory.length());
+      std::string fileName = oldFile.fileName.substr(+currentFileDirectory.length());
       std::string consolidateDirectory = currentFileDirectory + TABLE_CONSOLIDATE_DIRECTORY;
 
       std::string renameFile = fn_format(name_buff, fileName.c_str(), consolidateDirectory.c_str(),
                                          TABLE_DATA_EXTENSION, MY_UNPACK_FILENAME);
-      res = my_rename(oldFile.c_str(), renameFile.c_str(), 0);
+      res = my_rename(oldFile.fileName.c_str(), renameFile.c_str(), 0);
       // If rename was not successful return and rollback
     } else {
-      std::cerr << "Could not properly split folder and filename for " << oldFile << std::endl;
+      std::cerr << "Could not properly split folder and filename for " << oldFile.fileName << std::endl;
       res = -112;
     }
     if (res)
@@ -811,23 +836,51 @@ int crunch::findTableFiles(std::string folderName) {
     if (extensionIndex != std::string::npos) {
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
-      std::smatch schemaMatches;
+      std::smatch schemaMatches, dataMatches;
       // Must check for TABLE_DATA_EXTENSION first, since a regex for schema will match a substring of the data files
-      if (std::regex_match(extension, dataFileExtensionRegex)) {
-        bool fileExists = false;
-        std::string newDataFile = folderName + "/" + it;
-        for (auto existingFile : dataFiles) {
-          if (existingFile == newDataFile)
-            fileExists = true;
-        }
-        if (!fileExists)
-          dataFiles.push_back(newDataFile);
+      if (std::regex_search(extension, dataMatches, dataFileExtensionRegex)) {
+        try {
 
+          bool fileExists = false;
+          uint64_t schema_version = std::stoul(dataMatches[1]);
+          std::string newDataFile = folderName + "/" + it;
+          for (auto existingFile : dataFiles) {
+            if (existingFile.fileName == newDataFile)
+              fileExists = true;
+          }
+          if (!fileExists) {
+            data dataStruct = {newDataFile, schema_version};
+            dataFiles.push_back(dataStruct);
+          }
+        } catch (kj::Exception e) {
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", exception_line: "
+                    << e.getLine() << ", type: " << (int) e.getType()
+                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
+          return -1010;
+        } catch (const std::invalid_argument &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1011;
+        } catch (const std::out_of_range &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1012;
+        } catch (const std::exception &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << "errored when open file with: " << e.what() << std::endl;
+          return -1013;
+        };
       } else if (std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
         std::string schemaFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
                                            TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
         try {
-          int schema_version = std::stoi(schemaMatches[1]);
+          uint64_t schema_version = std::stoul(schemaMatches[1]);
           schemaFiles[schema_version] = schemaFile;
 
           // Parse schema from what was stored during create table
@@ -835,14 +888,17 @@ int crunch::findTableFiles(std::string folderName) {
 
           capnpParsedSchemas[schema_version] = capnpParsedSchema;
 
+          uint64_t minimumCompatibleSchemaVersion = capnpParsedSchema.getNested(
+              "minimumCompatibleSchemaVersion").asConst().as<uint64_t>();
+
           // Get schema struct name from mysql filepath name
           std::string structName = parseFileNameForStructName(name);
           // Get the nested structure from file, for now there is only a single struct in the schema files
           capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
 
-          capnpRowSchemas[schema_version] = capnpRowSchema;
+          schema schemaStruct = {capnpRowSchema, minimumCompatibleSchemaVersion};
 
-          //my_close(schemaFileDescriptor, 0);
+          capnpRowSchemas[schema_version] = schemaStruct;
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
                     << ", exception_line: "
@@ -921,15 +977,15 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 
   dataFileIndex = 0;
   if (dataFiles.size() > 0) {
-    currentDataFile = dataFiles[dataFileIndex];
-    std::smatch dataFileMatches;
-    if (std::regex_search(currentDataFile, dataFileMatches, dataFileExtensionRegex)) {
-      int dataFileVersion = std::stoi(dataFileMatches[1]);
-      if (capnpRowSchemas.find(dataFileVersion) == capnpRowSchemas.end())
-        DBUG_RETURN(-2);
-      capnpRowSchema = capnpRowSchemas[dataFileVersion];
-    } else {
-      DBUG_RETURN(-3);
+    data dataStruct = dataFiles[dataFileIndex];
+    currentDataFile = dataStruct.fileName;
+    ret = -2;
+    for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
+      if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
+        capnpRowSchema = i->second.schema;
+        ret = 0;
+        break;
+      }
     }
   }
 
@@ -994,7 +1050,8 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
-  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, parseFileNameForStructName(name), &err, 0, 1);
+  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, parseFileNameForStructName(name), &err, 0, 1,
+                                                    1);
 
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
   // Let mysql create the file for us
