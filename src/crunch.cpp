@@ -10,11 +10,13 @@
 #include "capnp-mysql.hpp"
 #include "crunch-sysvars.hpp"
 #include "utils.hpp"
+#include "crunch-alter-ctx.hpp"
 #include <sys/mman.h>
 #include <sql_priv.h>
 #include <sql_class.h>
 #include <regex>
 #include <fstream>
+#include <cstdint>
 
 #ifdef UNKNOWN
 #undef UNKNOWN
@@ -1193,6 +1195,149 @@ int crunch::rename_table(const char *from, const char *to) {
   }
 
   DBUG_RETURN(ret);
+}
+
+
+/**
+ *
+ * @param    altered_table     TABLE object for new version of table.
+ * @param    ha_alter_info     Structure describing changes to be done
+ *                             by ALTER TABLE and holding data used
+ *                             during in-place alter.
+ *
+ * @retval   HA_ALTER_ERROR                  Unexpected error.
+ * @retval   HA_ALTER_INPLACE_NOT_SUPPORTED  Not supported, must use copy.
+ * @retval   HA_ALTER_INPLACE_EXCLUSIVE_LOCK Supported, but requires X lock.
+ * @retval   HA_ALTER_INPLACE_SHARED_LOCK_AFTER_PREPARE
+ *                                           Supported, but requires SNW lock
+ *                                           during main phase. Prepare phase
+ *                                           requires X lock.
+ * @retval   HA_ALTER_INPLACE_SHARED_LOCK    Supported, but requires SNW lock.
+ * @retval   HA_ALTER_INPLACE_NO_LOCK_AFTER_PREPARE
+ *                                           Supported, concurrent reads/writes
+ *                                           allowed. However, prepare phase
+ *                                           requires X lock.
+ * @retval   HA_ALTER_INPLACE_NO_LOCK        Supported, concurrent
+ *                                           reads/writes allowed.
+ *
+ * @note The default implementation uses the old in-place ALTER API
+ * to determine if the storage engine supports in-place ALTER or not.
+ *
+ * @note Called without holding thr_lock.c lock.
+ */
+enum_alter_inplace_result
+crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
+  DBUG_ENTER("crunch::check_if_supported_inplace_alter");
+  if (ha_alter_info->ALTER_COLUMN_NAME) {
+    DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_EXCLUSIVE_LOCK);
+  }
+  DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
+}
+
+/**
+ *
+ * @note Storage engines are responsible for reporting any errors by
+ * calling my_error()/print_error()
+ *
+ * @note If this function reports error, commit_inplace_alter_table()
+ * will be called with commit= false.
+ *
+ * @note For partitioning, failing to prepare one partition, means that
+ * commit_inplace_alter_table() will be called to roll back changes for
+ * all partitions. This means that commit_inplace_alter_table() might be
+ * called without prepare_inplace_alter_table() having been called first
+ * for a given partition.
+ *
+ * @param    altered_table     TABLE object for new version of table.
+ * @param    ha_alter_info     Structure describing changes to be done
+ *                             by ALTER TABLE and holding data used
+ *                             during in-place alter.
+ *
+ * @retval   true              Error
+ * @retval   false             Success
+ */
+bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
+  DBUG_ENTER("crunch::prepare_inplace_alter_table");
+  // Build new alter CTX
+  ha_alter_info->handler_ctx = new crunchInplaceAlterCtx(name, transactionDirectory, altered_table, schemaVersion);
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME)
+    DBUG_RETURN(false);
+  DBUG_RETURN(true);
+}
+
+/**
+ *
+ *
+ * @note Storage engines are responsible for reporting any errors by
+ * calling my_error()/print_error()
+ *
+ * @note If this function reports error, commit_inplace_alter_table()
+ * will be called with commit= false.
+ *
+ * @param    altered_table     TABLE object for new version of table.
+ * @param    ha_alter_info     Structure describing changes to be done
+ *                             by ALTER TABLE and holding data used
+ *                             during in-place alter.
+ *
+ * @retval   true              Error
+ * @retval   false             Success
+ */
+bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
+  DBUG_ENTER("crunch::prepare_inplace_alter_table");
+  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx*>(ha_alter_info->handler_ctx);
+  // If we are altering a column name, then build new schema file
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
+    DBUG_RETURN(ctx->buildNewCapnpSchema());
+  }
+  DBUG_RETURN(true);
+}
+
+/**
+ *
+ * @note Storage engines are responsible for reporting any errors by
+ * calling my_error()/print_error()
+ *
+ * @note If this function with commit= true reports error, it will be called
+ *     again with commit= false.
+ *
+ * @note In case of partitioning, this function might be called for rollback
+ *     without prepare_inplace_alter_table() having been called first.
+ * Also partitioned tables sets ha_alter_info->group_commit_ctx to a NULL
+ * terminated array of the partitions handlers and if all of them are
+ * committed as one, then group_commit_ctx should be set to NULL to indicate
+ * to the partitioning handler that all partitions handlers are committed.
+ * @see prepare_inplace_alter_table().
+ *
+ * @param    altered_table     TABLE object for new version of table.
+ * @param    ha_alter_info     Structure describing changes to be done
+ * by ALTER TABLE and holding data used
+ * during in-place alter.
+ * @param    commit            True => Commit, False => Rollback.
+ *
+ * @retval   true              Error
+ * @retval   false             Success
+ */
+bool crunch::commit_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info, bool commit) {
+  DBUG_ENTER("crunch::prepare_inplace_alter_table");
+  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx*>(ha_alter_info->handler_ctx);
+  if(commit) {
+    DBUG_RETURN(ctx->commit());
+  } else {
+    DBUG_RETURN(ctx->rollback());
+  }
+  delete ctx;
+  DBUG_RETURN(false);
+}
+
+/**
+ * Get notified when .frm file is updated, this happens at the end of a alter table
+ */
+void crunch::notify_table_changed() {
+  DBUG_ENTER("crunch::notify_table_changed");
+  findTableFiles(name);
+  // Set the schemaVersion based on the latest we found when opening the table
+  schemaVersion = schemaFiles.rbegin()->first;
+  DBUG_VOID_RETURN;
 }
 
 int crunch::disconnect(handlerton *hton, MYSQL_THD thd) {

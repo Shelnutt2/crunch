@@ -108,6 +108,17 @@ class crunch : public handler {
     int start_stmt(THD *thd, thr_lock_type lock_type);
     static int disconnect(handlerton *hton, MYSQL_THD thd);
 
+
+    /* START INPLACE ALTER TABLE SUPPORT */
+    enum_alter_inplace_result check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+  private:
+    bool prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+    bool inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+    bool commit_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info, bool commit);
+    void notify_table_changed();
+    /* END INPLACE ALTER TABLE SUPPORT*/
+  public:
+
     static inline bool
     row_is_fixed_length(TABLE *table)
     {
