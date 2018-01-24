@@ -58,3 +58,27 @@ t1New	CREATE TABLE `t1New` (
   `column2New` varchar(1) DEFAULT NULL
 ) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=2
 DROP TABLE t1New;
+# Alter Column Name ALGORITHM=INPLACE
+CREATE TABLE t1 (
+column1 integer,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+dmFsdWU
+ALTER TABLE t1 CHANGE COLUMN column2 column2New varchar(255), ALGORITHM=INPLACE;
+select column2New FROM t1 ORDER BY column1;
+column2New
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+dmFsdWU
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2New` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+DROP TABLE t1;
