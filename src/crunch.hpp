@@ -200,6 +200,8 @@ private:
 
     ha_table_option_struct *options;
     uint64_t schemaVersion;
+
+    bool checkIfColumnChangeSupportedInplace(TABLE *alteredTable);
 };
 
 

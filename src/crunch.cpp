@@ -1247,6 +1247,15 @@ crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_inf
              ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE ||
              ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
     DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
+    if (checkIfColumnChangeSupportedInplace(altered_table)) {
+      DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
+    }
+    DBUG_PRINT("crunch::check_if_supported_inplace_alter",("%s: Alter in place not supported based on columns that are changing", name.c_str()));
+    DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
   }
   DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
 }
@@ -1335,6 +1344,11 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
     std::copy(newFields.begin(), newFields.end(), altered_table->field);
 
     DBUG_RETURN(false);
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
+    //Nothing to do here, we know the columns will be in the same order
   }
   DBUG_RETURN(false);
 }
@@ -1359,10 +1373,14 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
 bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
   crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
-  // If we are altering a column name, then build new schema file
+  // If we are altering a the schema, build new schema
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME ||
       ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
-      ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
+      ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
   DBUG_RETURN(false);
@@ -1487,6 +1505,39 @@ crunch_share *crunch::get_share() {
   err:
   unlock_shared_ha_data();
   DBUG_RETURN(tmp_share);
+}
+
+/**
+ * @brief Check alteredTable structure to see if column changes are supported for inplace alter
+ *
+ * @param alteredTable
+ * @return true on change support
+ * @reutrn false if column change type is not supported
+ */
+bool crunch::checkIfColumnChangeSupportedInplace(TABLE *alteredTable) {
+  DBUG_ENTER("crunch::checkIfColumnChangeSupportedInplace");
+  for (unsigned int i = 0; i < alteredTable->s->fields; i++) {
+    Field *originalField;
+    Field *alteredField = alteredTable->field[i];
+    if (!strcmp(table->field[i]->field_name, alteredField->field_name)) {
+      originalField = table->field[i];
+    } else {
+      for (unsigned int j = 0; j < table->s->fields; j++) {
+        if (!strcmp(table->field[j]->field_name, alteredField->field_name)) {
+          originalField = table->field[j];
+          break;
+        }
+      }
+    }
+    // Only check fields that have changed, new fields are supported
+    if (originalField != nullptr) {
+      DBUG_RETURN(checkIfMysqlColumnTypeCapnpCompatible(originalField, alteredField));
+    } else {
+      DBUG_PRINT("crunch::checkIfColumnChangeSupportedInplace",
+                 ("%s: originalField is nullptr in check if column change is supported online for column %s.", name.c_str(), alteredField->field_name));
+    }
+  }
+  DBUG_RETURN(false);
 }
 
 mysql_declare_plugin(crunch)

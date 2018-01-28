@@ -90,3 +90,21 @@ select column1 FROM t1 ORDER BY column1;
 show create table t1;
 
 DROP TABLE t1;
+
+--echo # Modify column data type ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (32767,'dmFsdWUy'), (65535,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 bigint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 smallint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 mediumint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+DROP TABLE t1;

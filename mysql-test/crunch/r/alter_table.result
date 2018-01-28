@@ -199,3 +199,51 @@ t1	CREATE TABLE `t1` (
   `column1` int(11) DEFAULT NULL
 ) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
 DROP TABLE t1;
+# Modify column data type ALGORITH=INPLACE
+CREATE TABLE t1 (
+column1 mediumint,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (32767,'dmFsdWUy'), (65535,'dmFsdWU');
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+32767	dmFsdWUy
+65535	dmFsdWU
+ALTER TABLE t1 MODIFY COLUMN column1 bigint, ALGORITHM=INPLACE;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` bigint(20) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+32767	dmFsdWUy
+65535	dmFsdWU
+ALTER TABLE t1 MODIFY COLUMN column1 smallint, ALGORITHM=INPLACE;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` smallint(6) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+32767	dmFsdWUy
+-1	dmFsdWU
+ALTER TABLE t1 MODIFY COLUMN column1 mediumint, ALGORITHM=INPLACE;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` mediumint(9) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+32767	dmFsdWUy
+65535	dmFsdWU
+DROP TABLE t1;

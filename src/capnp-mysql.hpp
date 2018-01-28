@@ -38,6 +38,8 @@ buildCapnpLimitedSchema(Field **field, std::string structName, int *err, uint64_
 
 std::string getCapnpTypeFromField(Field *field);
 
+bool checkIfMysqlColumnTypeCapnpCompatible(Field *field1, Field *field2);
+
 std::string camelCase(std::string mysqlString);
 
 #endif //CAPNP_MYSQL_HPP
