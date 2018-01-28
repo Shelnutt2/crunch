@@ -27,8 +27,6 @@ public:
 
     bool rollback();
 
-    void setFields(Field **newFields);
-
 private:
     std::string baseDirectory;
     std::string transactionDirectory;

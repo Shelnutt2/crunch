@@ -94,7 +94,3 @@ bool crunchInplaceAlterCtx::rollback() {
   }
   return false;
 }
-
-void crunchInplaceAlterCtx::setFields(Field **newFields) {
-  this->alteredTable->field = newFields;
-}
