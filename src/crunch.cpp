@@ -1401,7 +1401,6 @@ bool crunch::commit_inplace_alter_table(TABLE *altered_table, Alter_inplace_info
   } else {
     DBUG_RETURN(ctx->rollback());
   }
-  delete ctx;
   DBUG_RETURN(false);
 }
 
