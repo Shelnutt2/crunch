@@ -160,14 +160,27 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
     auto nulls = dynamicStructReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
 
     // Loop through each field to get the data
-    int colNumber = 0;
+    unsigned int colNumber = 0;
     std::vector<bool> nullBits;
-    for (Field **field = table->field; *field; field++) {
+    for (Field **field = table->field; *field; field++, colNumber++) {
       std::string capnpFieldName = camelCase((*field)->field_name);
-      auto capnpField = dynamicStructReader.get(capnpFieldName);
 
-      if (!nulls[colNumber].as<bool>()) {
+      // Handle when a new field was added but it is not in the data set
+      // Must return default value
+      if (nulls.size() <= colNumber) {
+        if ((*field)->maybe_null()) {
+          (*field)->set_null();
+        } else {
         (*field)->set_notnull();
+          ulong field_offset = (*field)->ptr - table->record[0];
+          memcpy((*field)->ptr, table->s->default_values + field_offset,
+                 (*field)->pack_length());
+        }
+      } else if (nulls[colNumber].as<bool>()) {
+        (*field)->set_null();
+      } else if(dynamicStructReader.has(capnpFieldName)) {
+        (*field)->set_notnull();
+        auto capnpField = dynamicStructReader.get(capnpFieldName);
 
         switch (capnpField.getType()) {
           case capnp::DynamicValue::VOID:
@@ -206,7 +219,6 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       } else {
         (*field)->set_null();
       }
-      colNumber++;
     }
   } catch (kj::Exception &e) {
     std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
@@ -247,7 +259,6 @@ int crunch::rnd_init(bool scan) {
     ret = -2;
     for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
       if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
-        std::cerr << "Found schema " << i->first << " is compatible with dataStruct.schemaVersion: " << dataStruct.schemaVersion << std::endl;
         capnpRowSchema = i->second.schema;
         ret = 0;
         break;
@@ -1228,8 +1239,10 @@ int crunch::rename_table(const char *from, const char *to) {
 enum_alter_inplace_result
 crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
   DBUG_ENTER("crunch::check_if_supported_inplace_alter");
-  if (ha_alter_info->ALTER_COLUMN_NAME) {
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_EXCLUSIVE_LOCK);
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+    DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
   }
   DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
 }
@@ -1259,9 +1272,65 @@ crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_inf
 bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
   // Build new alter CTX
-  ha_alter_info->handler_ctx = new crunchInplaceAlterCtx(name, transactionDirectory, altered_table, schemaVersion);
-  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME)
+  crunchInplaceAlterCtx *handlerCtx = new crunchInplaceAlterCtx(name, transactionDirectory, altered_table,
+                                                                capnpRowSchemas[schemaVersion].minimumCompatibleSchemaVersion);
+  ha_alter_info->handler_ctx = handlerCtx;
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(false);
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+    std::vector<Field *> newFields(altered_table->s->fields);
+    unsigned int newFieldsOffset = 0;
+    for (unsigned int i = 0; i < altered_table->s->fields; i++) {
+      if (i < table->s->fields) {
+        if (!strcmp(table->field[i]->field_name, altered_table->field[i]->field_name)) {
+          newFields[i] = altered_table->field[i];
+        } else {
+          bool foundField = false;
+          for (unsigned int j = 0; j < table->s->fields; j++) {
+            if (!strcmp(table->field[j]->field_name, altered_table->field[i]->field_name)) {
+              newFields[j] = altered_table->field[i];
+              foundField = true;
+              break;
+            }
+          }
+          if (!foundField) {
+            if (table->s->fields + newFieldsOffset < altered_table->s->fields) {
+              newFields[table->s->fields + newFieldsOffset] = altered_table->field[i];
+              newFieldsOffset++;
+            } else {
+              std::cerr
+                  << "prepare_inplace_alter_table::ALTER_COLUMN_NAME: error number of fields greater than allocation, inner"
+                  << std::endl;
+              DBUG_RETURN(true);
+            }
+          }
+        }
+      } else {
+        bool foundField = false;
+        for (unsigned int j = 0; j < table->s->fields; j++) {
+          if (!strcmp(table->field[j]->field_name, altered_table->field[i]->field_name)) {
+            newFields[j] = altered_table->field[i];
+            foundField = true;
+            break;
+          }
+        }
+        if (!foundField) {
+          if (table->s->fields + newFieldsOffset < altered_table->s->fields) {
+            newFields[table->s->fields + newFieldsOffset] = altered_table->field[i];
+            newFieldsOffset++;
+          } else {
+            std::cerr
+                << "prepare_inplace_alter_table::ALTER_COLUMN_NAME: error number of fields greater than allocation, second"
+                << std::endl;
+            DBUG_RETURN(true);
+          }
+        }
+      }
+    }
+    std::copy(newFields.begin(), newFields.end(), altered_table->field);
+
+    DBUG_RETURN(false);
+  }
   DBUG_RETURN(true);
 }
 
@@ -1284,9 +1353,10 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
  */
 bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info) {
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
-  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx*>(ha_alter_info->handler_ctx);
+  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
   // If we are altering a column name, then build new schema file
-  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
   DBUG_RETURN(true);
@@ -1319,8 +1389,8 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
  */
 bool crunch::commit_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info, bool commit) {
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
-  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx*>(ha_alter_info->handler_ctx);
-  if(commit) {
+  crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
+  if (commit) {
     DBUG_RETURN(ctx->commit());
   } else {
     DBUG_RETURN(ctx->rollback());

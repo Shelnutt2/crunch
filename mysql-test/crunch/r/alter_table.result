@@ -82,3 +82,57 @@ t1	CREATE TABLE `t1` (
   `column2New` varchar(255) DEFAULT NULL
 ) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
 DROP TABLE t1;
+# Add New Column ALGORITHM=INPLACE
+CREATE TABLE t1 (
+column1 integer,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+dmFsdWU
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+column1	column2	column3
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL
+3	dmFsdWUy	NULL
+5	dmFsdWU	NULL
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL,
+  `column3` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+ALTER TABLE t1 ADD COLUMN column4 int DEFAULT 10 NOT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+column1	column2	column3	column4
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL	10
+3	dmFsdWUy	NULL	10
+5	dmFsdWU	NULL	10
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL,
+  `column3` varchar(255) DEFAULT NULL,
+  `column4` int(11) NOT NULL DEFAULT 10
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+ALTER TABLE t1 ADD COLUMN column5 bigint DEFAULT -113 NOT NULL AFTER column3, ALGORITHM=INPLACE;
+select column1, column2, column3, column4, column5 FROM t1 ORDER BY column1;
+column1	column2	column3	column4	column5
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL	10	-113
+3	dmFsdWUy	NULL	10	-113
+5	dmFsdWU	NULL	10	-113
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL,
+  `column3` varchar(255) DEFAULT NULL,
+  `column5` bigint(20) NOT NULL DEFAULT -113,
+  `column4` int(11) NOT NULL DEFAULT 10
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+DROP TABLE t1;

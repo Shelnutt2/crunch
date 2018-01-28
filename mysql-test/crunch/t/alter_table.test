@@ -40,3 +40,22 @@ select column2New FROM t1 ORDER BY column1;
 show create table t1;
 
 DROP TABLE t1;
+
+--echo # Add New Column ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+show create table t1;
+ALTER TABLE t1 ADD COLUMN column4 int DEFAULT 10 NOT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+show create table t1;
+ALTER TABLE t1 ADD COLUMN column5 bigint DEFAULT -113 NOT NULL AFTER column3, ALGORITHM=INPLACE;
+select column1, column2, column3, column4, column5 FROM t1 ORDER BY column1;
+show create table t1;
+
+DROP TABLE t1;
