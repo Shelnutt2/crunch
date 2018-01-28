@@ -136,3 +136,43 @@ t1	CREATE TABLE `t1` (
   `column4` int(11) NOT NULL DEFAULT 10
 ) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
 DROP TABLE t1;
+# Add Change Column Nullability ALGORITHM=INPLACE
+CREATE TABLE t1 (
+column1 integer,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy');
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NOT NULL, ALGORITHM=INPLACE;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2` varchar(255) NOT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+INSERT INTO t1(column1) VALUES (5);
+Warnings:
+Warning	1364	Field 'column2' doesn't have a default value
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NULL, ALGORITHM=INPLACE;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` int(11) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=20
+INSERT INTO t1 (column1) VALUES (7);
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+
+NULL
+DROP TABLE t1;

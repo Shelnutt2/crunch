@@ -1241,7 +1241,11 @@ crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_inf
   DBUG_ENTER("crunch::check_if_supported_inplace_alter");
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_EXCLUSIVE_LOCK);
-  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ) {
     DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
   }
   DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
@@ -1331,7 +1335,7 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
 
     DBUG_RETURN(false);
   }
-  DBUG_RETURN(true);
+  DBUG_RETURN(false);
 }
 
 /**
@@ -1359,7 +1363,7 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
       ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
-  DBUG_RETURN(true);
+  DBUG_RETURN(false);
 }
 
 /**

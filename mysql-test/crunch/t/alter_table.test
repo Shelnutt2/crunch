@@ -59,3 +59,21 @@ select column1, column2, column3, column4, column5 FROM t1 ORDER BY column1;
 show create table t1;
 
 DROP TABLE t1;
+
+--echo # Add Change Column Nullability ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NOT NULL, ALGORITHM=INPLACE;
+show create table t1;
+INSERT INTO t1(column1) VALUES (5);
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NULL, ALGORITHM=INPLACE;
+show create table t1;
+INSERT INTO t1 (column1) VALUES (7);
+select column2 FROM t1 ORDER BY column1;
+
+DROP TABLE t1;
