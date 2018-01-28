@@ -66,7 +66,7 @@ bool crunchInplaceAlterCtx::buildNewCapnpSchema() {
 bool crunchInplaceAlterCtx::commit() {
 
   char name_buff[FN_REFLEN];
-  if (getFilesize(this->transactionSchemaFile.c_str()) > 0) {
+  if (!this->transactionSchemaFile.empty() && getFilesize(this->transactionSchemaFile.c_str()) > 0) {
     std::string renameFile = fn_format(name_buff, this->schemaFileName.c_str(), this->baseDirectory.c_str(),
                                        "",
                                        MY_UNPACK_FILENAME);
@@ -87,7 +87,7 @@ bool crunchInplaceAlterCtx::commit() {
 bool crunchInplaceAlterCtx::rollback() {
   int res = 0;
   // Delete transaction file on rollback
-  if (checkFileExists(this->transactionSchemaFile.c_str())) {
+  if (!this->transactionSchemaFile.empty() && checkFileExists(this->transactionSchemaFile.c_str())) {
     res = my_delete(this->transactionSchemaFile.c_str(), 0);
     if (res)
       return true;
