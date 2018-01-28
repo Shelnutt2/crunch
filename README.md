@@ -39,6 +39,21 @@ cmake .. -DCRUNCH_COMPILE_STANDALONE=ON
 make -j4
 ```
 
+## Features
+
+### Inplace Alter Table
+
+In place alter tables are supported for column renames and column additions.
+Adding of columns is supported at any position (LAST or AFTER supported).
+
+When altering tables, the on disk data format is not changed. A new schema is
+produced and when reading data it is converted on read to the new schema.
+
+If a default value is set for a column and the column is also set to null
+then the default value is not used, but the column will return null for
+existing data. This is a limitation that will be addressed in the future.
+
+
 ## Architecture
 
 ### On Disk Format
