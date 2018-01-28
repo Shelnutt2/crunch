@@ -1345,12 +1345,16 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
 
     DBUG_RETURN(false);
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE ||
              ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
              ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
              ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
     //Nothing to do here, we know the columns will be in the same order
+    DBUG_RETURN(false);
   }
-  DBUG_RETURN(false);
+  DBUG_RETURN(true);
 }
 
 /**
@@ -1383,7 +1387,11 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
       ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
-  DBUG_RETURN(false);
+  if(ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
+    ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
+    ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE)
+    DBUG_RETURN(false);
+  DBUG_RETURN(true);
 }
 
 /**
