@@ -171,14 +171,14 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
         if ((*field)->maybe_null()) {
           (*field)->set_null();
         } else {
-        (*field)->set_notnull();
+          (*field)->set_notnull();
           ulong field_offset = (*field)->ptr - table->record[0];
           memcpy((*field)->ptr, table->s->default_values + field_offset,
                  (*field)->pack_length());
         }
       } else if (nulls[colNumber].as<bool>()) {
         (*field)->set_null();
-      } else if(dynamicStructReader.has(capnpFieldName)) {
+      } else if (dynamicStructReader.has(capnpFieldName)) {
         (*field)->set_notnull();
         auto capnpField = dynamicStructReader.get(capnpFieldName);
 
@@ -1242,10 +1242,10 @@ crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_inf
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_EXCLUSIVE_LOCK);
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ) {
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE ||
+             ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
     DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
   }
   DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
@@ -1281,7 +1281,8 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
   ha_alter_info->handler_ctx = handlerCtx;
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(false);
-  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
+             ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
     std::vector<Field *> newFields(altered_table->s->fields);
     unsigned int newFieldsOffset = 0;
     for (unsigned int i = 0; i < altered_table->s->fields; i++) {
@@ -1360,7 +1361,8 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
   crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
   // If we are altering a column name, then build new schema file
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+      ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
+      ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
   DBUG_RETURN(false);

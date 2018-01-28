@@ -77,3 +77,16 @@ INSERT INTO t1 (column1) VALUES (7);
 select column2 FROM t1 ORDER BY column1;
 
 DROP TABLE t1;
+
+--echo # Drop Column ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 DROP COLUMN column2, ALGORITHM=INPLACE;
+select column1 FROM t1 ORDER BY column1;
+show create table t1;
+
+DROP TABLE t1;
