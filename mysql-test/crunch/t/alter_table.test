@@ -108,3 +108,19 @@ ALTER TABLE t1 MODIFY COLUMN column1 mediumint, ALGORITHM=INPLACE;
 show create table t1;
 select column1, column2 from t1;
 DROP TABLE t1;
+
+--echo # Test consolidation after column addition ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 ADD COLUMN column3 int DEFAULT 10, ALGORITHM=INPLACE;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+show create table t1;
+INSERT INTO t1 VALUES (7, 'test', 1337);
+select column1, column2, column3 FROM t1 ORDER BY column1;
+FLUSH TABLES t1;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+DROP TABLE t1;
