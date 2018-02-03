@@ -21,6 +21,8 @@
 #include <fcntl.h>
 
 #include <field.h>
+#include <capnp/serialize.h>
+#include <memory>
 
 #ifndef NULL_COLUMN_FIELD
 #define NULL_COLUMN_FIELD "nullColumns"
@@ -29,6 +31,16 @@
 #ifndef CAPNP_SCHEMA_VERSION_COLUMN_FIELD
 #define CAPNP_SCHEMA_VERSION_COLUMN_FIELD "capnpSchemaVersion"
 #endif
+
+typedef struct schema_struct {
+    ::capnp::StructSchema schema;
+    uint64_t minimumCompatibleSchemaVersion;
+} schema;
+
+typedef struct data_struct {
+    std::string fileName;
+    uint64_t schemaVersion;
+} data;
 
 uint64_t generateRandomId();
 
@@ -41,5 +53,12 @@ std::string getCapnpTypeFromField(Field *field);
 bool checkIfMysqlColumnTypeCapnpCompatible(Field *field1, Field *field2);
 
 std::string camelCase(std::string mysqlString);
+
+std::unique_ptr<capnp::MallocMessageBuilder>
+updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, schema old_schema, schema new_schema);
+
+template <typename T, typename W>
+W convert(T, W);
+
 
 #endif //CAPNP_MYSQL_HPP

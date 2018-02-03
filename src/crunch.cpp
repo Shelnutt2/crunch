@@ -777,8 +777,19 @@ int crunch::consolidateFiles() {
       if (rowRead == NULL)
         break;
 
-      capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema);
-      message->setRoot(messageRoot);
+      // If the schema version are not the same, we need to decode and re-encode the row so we can convert the
+      // message to the latest schema version
+      if(dataFiles[dataFileIndex].schemaVersion != schemaVersion) {
+        /*
+         * Originally the idea was to just call capnpDataToMysqlBuffer but turns out building an array
+         * of *Field is not realistically doable. Instead we will using
+         * updateMessageToSchema(message, old_schema, new_schema) in order to upgrade a messages content
+         */
+        message = updateMessageToSchema(std::move(rowRead), capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion], capnpRowSchemas.rbegin()->second);
+      } else {
+        capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema);
+        message->setRoot(messageRoot);
+      }
       write_message(std::move(message), txn);
     }
     res = txn->commitOrRollback();

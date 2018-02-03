@@ -30,6 +30,7 @@
 #include "crunchrowlocation.capnp.h"
 #include "crunch-txn.hpp"
 #include "crunch-sysvars.hpp"
+#include "capnp-mysql.hpp"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -63,16 +64,6 @@ public:
       mysql_mutex_destroy(&mutex);
     }
 };
-
-typedef struct schema_struct {
-    ::capnp::StructSchema schema;
-    uint64_t minimumCompatibleSchemaVersion;
-} schema;
-
-typedef struct data_struct {
-    std::string fileName;
-    uint64_t schemaVersion;
-} data;
 
 class crunch : public handler {
   public:
