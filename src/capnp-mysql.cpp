@@ -165,7 +165,7 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
   output +=
     "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
   for (Field **field = fields; *field; field++) {
-    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + 2) + " :" +
+    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + NON_MYSQL_FIELD_COUNT) + " :" +
               getCapnpTypeFromField(*field) + ";\n";
 
   }
@@ -209,23 +209,23 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
 
     capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
-                                                        newSchemaFields.size()).as<capnp::DynamicList>();
+                                                        oldSchemaFields.size() - NON_MYSQL_FIELD_COUNT).as<capnp::DynamicList>();
 
     capnp::DynamicStruct::Reader rowReader = message->getRoot<capnp::DynamicStruct>(oldSchema.schema);
     //Get nulls
     auto nullsReader = rowReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
     capnp::StructSchema::Field oldSchemaField, newSchemaField;
     //Start at 2 because first two variables are null list and schema version
-    for (uint i = 2; i < oldSchemaFields.size(); i++) {
+    for (uint i = NON_MYSQL_FIELD_COUNT; i < oldSchemaFields.size(); i++) {
       if (i >= newSchemaFields.size())
         break;
       oldSchemaField = oldSchemaFields[i];
       newSchemaField = newSchemaFields[i];
       //Check if the field is null, if it is we don't need to set anything
-      if (nullsReader[i - 2].as<bool>()) {
-        nulls.set(i, true);
+      if (nullsReader[i - NON_MYSQL_FIELD_COUNT].as<bool>()) {
+        nulls.set(i - NON_MYSQL_FIELD_COUNT, true);
       } else {
-        nulls.set(i, false);
+        nulls.set(i - NON_MYSQL_FIELD_COUNT, false);
         if (oldSchemaField.getType() == newSchemaField.getType())
           rowBuilder.set(newSchemaField.getProto().getName(), rowReader.get(oldSchemaField.getProto().getName()));
         else {

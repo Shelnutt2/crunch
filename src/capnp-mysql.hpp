@@ -32,6 +32,10 @@
 #define CAPNP_SCHEMA_VERSION_COLUMN_FIELD "capnpSchemaVersion"
 #endif
 
+#ifndef NON_MYSQL_FIELD_COUNT
+#define NON_MYSQL_FIELD_COUNT 2
+#endif
+
 typedef struct schema_struct {
     ::capnp::StructSchema schema;
     uint64_t minimumCompatibleSchemaVersion;
