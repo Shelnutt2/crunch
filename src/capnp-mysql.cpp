@@ -20,6 +20,8 @@
 
 #include "capnp-mysql.hpp"
 #include <capnp/dynamic.h>
+#include <iostream>
+#include <capnp/serialize.h>
 
 
 uint64_t generateRandomId() {
@@ -39,7 +41,7 @@ uint64_t generateRandomId() {
 
   ssize_t n;
   KJ_SYSCALL(n = read(fd, &result, sizeof(result)), "/dev/urandom");
-      KJ_ASSERT(n == sizeof(result), "Incomplete read from /dev/urandom.", n);
+    KJ_ASSERT(n == sizeof(result), "Incomplete read from /dev/urandom.", n);
 #endif
 
   return result | (1ull << 63);
@@ -161,7 +163,7 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
 
   output += "  " + std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   output +=
-      "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
+    "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
   for (Field **field = fields; *field; field++) {
     output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + 2) + " :" +
               getCapnpTypeFromField(*field) + ";\n";
@@ -171,7 +173,7 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
   output += "}";
 
   output +=
-      "\n\nconst minimumCompatibleSchemaVersion :UInt64 = " + std::to_string(minimumCompatibleSchemaVersion) + ";";
+    "\n\nconst minimumCompatibleSchemaVersion :UInt64 = " + std::to_string(minimumCompatibleSchemaVersion) + ";";
 
   return output;
 }
@@ -194,260 +196,311 @@ std::string camelCase(std::string mysqlString) {
 
 std::unique_ptr<capnp::MallocMessageBuilder>
 updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, schema oldSchema, schema newSchema) {
-//  old_schema.schema.getFields()[0].field_name
-  const capnp::StructSchema::FieldList &oldSchemaFields = oldSchema.schema.getFields();
-  const capnp::StructSchema::FieldList &newSchemaFields = newSchema.schema.getFields();
-
   std::unique_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
-  // Use stored structure
-  capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
+  if (message == nullptr) {
+    std::cerr << "Warning message passed to updateMessageToSchema was nullptr" << std::endl;
+    return nullptr;
+  }
+  try {
+    const capnp::StructSchema::FieldList &oldSchemaFields = oldSchema.schema.getFields();
+    const capnp::StructSchema::FieldList &newSchemaFields = newSchema.schema.getFields();
 
-  capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
-                                                      newSchemaFields.size()).as<capnp::DynamicList>();
+    // Use stored structure
+    capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
 
-  capnp::DynamicStruct::Reader rowReader = message->getRoot<capnp::DynamicStruct>(oldSchema.schema);
-  //Get nulls
-  auto nullsReader = rowReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
-  capnp::StructSchema::Field oldSchemaField, newSchemaField;
-  for (uint i = 0; i < oldSchemaFields.size(); i++) {
-    //Check if the field is null, if it is we don't need to set anything
-    if (i < nullsReader.size() && nullsReader[i].as<bool>()) {
-      nulls.set(i, true);
-    } else {
-      nulls.set(i, false);
+    capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
+                                                        newSchemaFields.size()).as<capnp::DynamicList>();
+
+    capnp::DynamicStruct::Reader rowReader = message->getRoot<capnp::DynamicStruct>(oldSchema.schema);
+    //Get nulls
+    auto nullsReader = rowReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
+    capnp::StructSchema::Field oldSchemaField, newSchemaField;
+    //Start at 2 because first two variables are null list and schema version
+    for (uint i = 2; i < oldSchemaFields.size(); i++) {
+      if (i >= newSchemaFields.size())
+        break;
       oldSchemaField = oldSchemaFields[i];
       newSchemaField = newSchemaFields[i];
-      if (oldSchemaField.getType() == newSchemaField.getType())
-        rowBuilder.set(newSchemaField.getProto().getName(), rowReader.get(oldSchemaField.getProto().getName()));
-      else {
-        if (oldSchemaField.getType().isBool()) {
-          if (newSchemaField.getType().isInt8()
-              || newSchemaField.getType().isInt16()
-              || newSchemaField.getType().isInt32()
-              || newSchemaField.getType().isInt64()
-              || newSchemaField.getType().isUInt8()
-              || newSchemaField.getType().isUInt16()
-              || newSchemaField.getType().isUInt32()
-              || newSchemaField.getType().isUInt64()
-              || newSchemaField.getType().isFloat32()
-              || newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<bool>());
-          } else if (newSchemaField.getType().isText()
-                     || newSchemaField.getType().isData()) {
-            if (rowReader.get(oldSchemaField.getProto().getName()).as<bool>()) {
-              rowBuilder.set(newSchemaField.getProto().getName(), "True");
-            } else {
-              rowBuilder.set(newSchemaField.getProto().getName(), "False");
-            }
-          }
-        } else if (oldSchemaField.getType().isText()) {
-          try {
+      //Check if the field is null, if it is we don't need to set anything
+      if (nullsReader[i - 2].as<bool>()) {
+        nulls.set(i, true);
+      } else {
+        nulls.set(i, false);
+        if (oldSchemaField.getType() == newSchemaField.getType())
+          rowBuilder.set(newSchemaField.getProto().getName(), rowReader.get(oldSchemaField.getProto().getName()));
+        else {
+          if (oldSchemaField.getType().isBool()) {
             if (newSchemaField.getType().isInt8()
-                || newSchemaField.getType().isInt16()) {
+                || newSchemaField.getType().isInt16()
+                || newSchemaField.getType().isInt32()
+                || newSchemaField.getType().isInt64()
+                || newSchemaField.getType().isUInt8()
+                || newSchemaField.getType().isUInt16()
+                || newSchemaField.getType().isUInt32()
+                || newSchemaField.getType().isUInt64()
+                || newSchemaField.getType().isFloat32()
+                || newSchemaField.getType().isFloat64()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stoi(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+                             rowReader.get(oldSchemaField.getProto().getName()).as<bool>());
+            } else if (newSchemaField.getType().isText()
+                       || newSchemaField.getType().isData()) {
+              if (rowReader.get(oldSchemaField.getProto().getName()).as<bool>()) {
+                rowBuilder.set(newSchemaField.getProto().getName(), "True");
+              } else {
+                rowBuilder.set(newSchemaField.getProto().getName(), "False");
+              }
+            }
+          } else if (oldSchemaField.getType().isText()) {
+            try {
+              if (newSchemaField.getType().isInt8()
+                  || newSchemaField.getType().isInt16()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stoi(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+              } else if (newSchemaField.getType().isInt32()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stoll(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+
+              } else if (newSchemaField.getType().isInt64()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stoll(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+              } else if (newSchemaField.getType().isUInt8()
+                         || newSchemaField.getType().isUInt16()
+                         || newSchemaField.getType().isUInt32()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stoul(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+              } else if (newSchemaField.getType().isUInt64()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stoull(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+
+              } else if (newSchemaField.getType().isFloat32()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stof(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+              } else if (newSchemaField.getType().isFloat64()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::stod(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+              } else if (newSchemaField.getType().isData()) {
+                rowBuilder.set(newSchemaField.getProto().getName(), rowReader.get(oldSchemaField.getProto().getName()));
+              }
+              // If there is an error converting from string to data type, just don't set the value
+              // its default mysql behavior
+            } catch (const std::exception &e) {
+              continue;
+            }
+            // We can treat int vs uint the same, as we are not changing bits, so the conversion is consistent
+          } else if (oldSchemaField.getType().isInt8() || oldSchemaField.getType().isUInt8()) {
+            if (newSchemaField.getType().isInt16()
+                || newSchemaField.getType().isInt32()
+                || newSchemaField.getType().isInt64()
+                || newSchemaField.getType().isFloat32()
+                || newSchemaField.getType().isFloat64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<int8_t>());
+            } else if (newSchemaField.getType().isUInt16()
+                       || newSchemaField.getType().isUInt32()
+                       || newSchemaField.getType().isUInt64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>());
+            } else if (newSchemaField.getType().isText()
+                       || newSchemaField.getType().isData()) {
+              // Only string values need to be treated differently
+              if (oldSchemaField.getType().isUInt8()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>()).c_str());
+              } else {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int8_t>()).c_str());
+              }
+            }
+          } else if (oldSchemaField.getType().isInt16() || oldSchemaField.getType().isUInt16()) {
+            if (newSchemaField.getType().isInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()));
+            } else if (newSchemaField.getType().isInt32()
+                       || newSchemaField.getType().isInt64()
+                       || newSchemaField.getType().isFloat32()
+                       || newSchemaField.getType().isFloat64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>());
+            } else if (newSchemaField.getType().isUInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()));
+            } else if (newSchemaField.getType().isUInt32()
+                       || newSchemaField.getType().isUInt64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>());
+            } else if (newSchemaField.getType().isText()
+                       || newSchemaField.getType().isData()) {
+              // Only string values need to be treated differently
+              if (oldSchemaField.getType().isUInt16()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>()).c_str());
+              } else {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()).c_str());
+              }
+            }
+          } else if (oldSchemaField.getType().isInt32() || oldSchemaField.getType().isUInt32()) {
+            if (newSchemaField.getType().isInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()));
+            } else if (newSchemaField.getType().isInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()));
+            } else if (newSchemaField.getType().isInt64()
+                       || newSchemaField.getType().isFloat32()
+                       || newSchemaField.getType().isFloat64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>());
+            } else if (newSchemaField.getType().isUInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()));
+            } else if (newSchemaField.getType().isUInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()));
+            } else if (newSchemaField.getType().isUInt64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>());
+            } else if (newSchemaField.getType().isText()
+                       || newSchemaField.getType().isData()) {
+              // Only string values need to be treated differently
+              if (oldSchemaField.getType().isUInt32()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>()).c_str());
+              } else {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()).c_str());
+              }
+            }
+          } else if (oldSchemaField.getType().isInt64() || oldSchemaField.getType().isUInt64()) {
+            if (newSchemaField.getType().isInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
             } else if (newSchemaField.getType().isInt32()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stoll(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+                             static_cast<int32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isFloat32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<float>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isFloat64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>());
+            } else if (newSchemaField.getType().isUInt8()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+              } else if (newSchemaField.getType().isUInt16()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+              } else if (newSchemaField.getType().isUInt32()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isText()
+                       || newSchemaField.getType().isData()) {
+              // Only string values need to be treated differently
+              if (oldSchemaField.getType().isUInt64()) {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint64_t>()).c_str());
+              } else {
+                rowBuilder.set(newSchemaField.getProto().getName(),
+                               std::to_string(
+                                 rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()).c_str());
+              }
+            }
+          } else if (oldSchemaField.getType().isFloat32()) {
+            if (newSchemaField.getType().isInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isInt32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
 
             } else if (newSchemaField.getType().isInt64()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stoll(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
-            } else if (newSchemaField.getType().isUInt8()
-                       || newSchemaField.getType().isUInt16()
-                       || newSchemaField.getType().isUInt32()) {
+                             static_cast<int64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isUInt8()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stoul(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+                             static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isUInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isUInt32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
             } else if (newSchemaField.getType().isUInt64()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stoull(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+                             static_cast<uint64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+
+            } else if (newSchemaField.getType().isFloat64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<double>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
+            } else if (newSchemaField.getType().isData()
+                       || newSchemaField.getType().isText()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<float>()).c_str());
+            }
+          } else if (oldSchemaField.getType().isFloat64()) {
+            if (newSchemaField.getType().isInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isInt32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+
+            } else if (newSchemaField.getType().isInt64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<int64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isUInt8()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isUInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isUInt32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isUInt64()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
 
             } else if (newSchemaField.getType().isFloat32()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stof(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
-            } else if (newSchemaField.getType().isFloat64()) {
+                             static_cast<float>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
+            } else if (newSchemaField.getType().isData()
+                       || newSchemaField.getType().isText()) {
               rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::stod(rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
-            } else if (newSchemaField.getType().isData()) {
-              rowBuilder.set(newSchemaField.getProto().getName(), rowReader.get(oldSchemaField.getProto().getName()));
+                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<double>()).c_str());
             }
-            // If there is an error converting from string to data type, just don't set the value
-            // its default mysql behavior
-          } catch (const std::exception &e) {
-            continue;
-          }
-        } else if (oldSchemaField.getType().isInt8() || oldSchemaField.getType().isUInt8()) {
-          if (newSchemaField.getType().isInt16()
-              || newSchemaField.getType().isInt32()
-              || newSchemaField.getType().isInt64()
-              || newSchemaField.getType().isFloat32()
-              || newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<int8_t>());
-          } else if (newSchemaField.getType().isUInt16()
-                     || newSchemaField.getType().isUInt32()
-                     || newSchemaField.getType().isUInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>());
-          } else if (newSchemaField.getType().isText()
-                     || newSchemaField.getType().isData()) {
-            // Only string values need to be treated differently
-            if (oldSchemaField.getType().isUInt8()) {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>()).c_str());
-            } else {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int8_t>()).c_str());
-            }
-          }
-        } else if (oldSchemaField.getType().isInt16() || oldSchemaField.getType().isUInt16()) {
-          if (newSchemaField.getType().isInt8()
-              || newSchemaField.getType().isInt32()
-              || newSchemaField.getType().isInt64()
-              || newSchemaField.getType().isFloat32()
-              || newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>());
-          } else if (newSchemaField.getType().isUInt8()
-                     || newSchemaField.getType().isUInt32()
-                     || newSchemaField.getType().isUInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>());
-          } else if (newSchemaField.getType().isText()
-                     || newSchemaField.getType().isData()) {
-            // Only string values need to be treated differently
-            if (oldSchemaField.getType().isUInt16()) {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>()).c_str());
-            } else {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()).c_str());
-            }
-          }
-        } else if (oldSchemaField.getType().isInt32() || oldSchemaField.getType().isUInt32()) {
-          if (newSchemaField.getType().isInt8()
-              || newSchemaField.getType().isInt16()
-              || newSchemaField.getType().isInt64()
-              || newSchemaField.getType().isFloat32()
-              || newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>());
-          } else if (newSchemaField.getType().isUInt8()
-                     || newSchemaField.getType().isUInt16()
-                     || newSchemaField.getType().isUInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>());
-          } else if (newSchemaField.getType().isText()
-                     || newSchemaField.getType().isData()) {
-            // Only string values need to be treated differently
-            if (oldSchemaField.getType().isUInt32()) {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>()).c_str());
-            } else {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()).c_str());
-            }
-          }
-        } else if (oldSchemaField.getType().isInt64() || oldSchemaField.getType().isUInt64()) {
-          if (newSchemaField.getType().isInt8()
-              || newSchemaField.getType().isInt16()
-              || newSchemaField.getType().isInt32()
-              || newSchemaField.getType().isFloat32()
-              || newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>());
-          } else if (newSchemaField.getType().isUInt8()
-                     || newSchemaField.getType().isUInt16()
-                     || newSchemaField.getType().isUInt32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           rowReader.get(oldSchemaField.getProto().getName()).as<uint64_t>());
-          } else if (newSchemaField.getType().isText()
-                     || newSchemaField.getType().isData()) {
-            // Only string values need to be treated differently
-            if (oldSchemaField.getType().isUInt64()) {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<uint64_t>()).c_str());
-            } else {
-              rowBuilder.set(newSchemaField.getProto().getName(),
-                             std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()).c_str());
-            }
-          }
-        } else if (oldSchemaField.getType().isFloat32()) {
-          if (newSchemaField.getType().isInt8()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isInt16()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isInt32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-
-          } else if (newSchemaField.getType().isInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isUInt8()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isUInt16()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isUInt32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isUInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-
-          } else if (newSchemaField.getType().isFloat64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<double>(rowReader.get(oldSchemaField.getProto().getName()).as<float>()));
-          } else if (newSchemaField.getType().isData()
-                     || newSchemaField.getType().isText()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<float>()).c_str());
-          }
-        } else if (oldSchemaField.getType().isFloat64()) {
-          if (newSchemaField.getType().isInt8()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isInt16()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isInt32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-
-          } else if (newSchemaField.getType().isInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<int64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isUInt8()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isUInt16()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isUInt32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isUInt64()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<uint64_t>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-
-          } else if (newSchemaField.getType().isFloat32()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           static_cast<float>(rowReader.get(oldSchemaField.getProto().getName()).as<double>()));
-          } else if (newSchemaField.getType().isData()
-                     || newSchemaField.getType().isText()) {
-            rowBuilder.set(newSchemaField.getProto().getName(),
-                           std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<double>()).c_str());
           }
         }
       }
     }
+  } catch (kj::Exception &e) {
+    std::cerr << "exception on updateMessageToSchema: " << e.getFile() << ":" << e.getLine()
+              << ", line: " << __FILE__ << ":" << __LINE__
+              << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    return nullptr;
+  } catch (std::exception &e) {
+    std::cerr << "exception on updateMessageToSchema: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+              << e.what() << std::endl;
+    return nullptr;
   }
 
   return
-      std::move(tableRow);
+    std::move(tableRow);
 }

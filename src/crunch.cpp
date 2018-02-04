@@ -256,14 +256,15 @@ int crunch::rnd_init(bool scan) {
   data dataStruct = dataFiles[dataFileIndex];
   if (dataFiles.size() > 0) {
     currentDataFile = dataStruct.fileName;
-    ret = -2;
+    /*ret = -2;
     for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
       if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
         capnpRowSchema = i->second.schema;
         ret = 0;
         break;
       }
-    }
+    }*/
+    capnpRowSchema = capnpRowSchemas.rbegin()->second;
   }
 
   dataPointer = dataFileStart;
@@ -285,7 +286,7 @@ std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
     dataPointerNext = tmpDataMessageReader->getEnd();
     uint64_t rowStartLocation = (dataPointer - dataFileStart);
     if (!checkForDeletedRow(currentDataFile, rowStartLocation)) {
-      DBUG_RETURN(tmpDataMessageReader);
+      DBUG_RETURN(std::move(tmpDataMessageReader));
       //currentRowNumber++;
     } else {
       DBUG_RETURN(rnd_row(err));
@@ -305,14 +306,16 @@ std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
       currentDataFile = dataStruct.fileName;
-      *err = -2;
+
+      /**err = -2;
       for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
         if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
           capnpRowSchema = i->second.schema;
           *err = 0;
           break;
         }
-      }
+      }*/
+      capnpRowSchema = capnpRowSchemas.rbegin()->second;
       if (!*err)
         DBUG_RETURN(rnd_row(err));
     }
@@ -327,10 +330,39 @@ int crunch::rnd_next(uchar *buf) {
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *orig = dbug_tmp_use_all_columns(table, table->write_set);
 
-  dataMessageReader = rnd_row(&rc);
+  try {
+    std::unique_ptr<capnp::FlatArrayMessageReader> rowRead = rnd_row(&rc);
+    if(!rc) {
+      if(rowRead == nullptr) {
+        rc = -41;
+      } else {
+        if (dataFiles[dataFileIndex].schemaVersion != capnpRowSchema.schemaVersion) {
+          auto newMessage = updateMessageToSchema(std::move(rowRead),
+                                                  capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
+                                                  capnpRowSchema);
+          if (newMessage == nullptr)
+            rc = -42;
+          else
+            rowRead = std::make_unique<capnp::FlatArrayMessageReader>(
+                capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
 
-  if (!rc && !capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
-    DBUG_RETURN(-43);
+        }
+
+        if (!capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+          rc = -43;
+      }
+    }
+  } catch (kj::Exception &e) {
+    std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: "
+              << e.getLine() << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    rc = -44;
+  } catch (std::exception &e) {
+    std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+              << e.what() << std::endl;
+    rc = -45;
+  }
 
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
@@ -367,14 +399,15 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
       data dataStruct = dataFiles[dataFileIndex];
       DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
       mmapData(dataStruct.fileName);
-      rc = -2;
+      /*rc = -2;
       for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
         if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
           capnpRowSchema = i->second.schema;
           rc = 0;
           break;
         }
-      }
+      }*/
+      capnpRowSchema = capnpRowSchemas.rbegin()->second;
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
     }
@@ -382,10 +415,38 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
     if (!checkForDeletedRow(rowLocation.getFileName().cStr(), rowLocation.getRowStartLocation())) {
       auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
           kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
-      dataMessageReader = std::move(tmpDataMessageReader);
+      try {
+        if(!rc) {
+          if(tmpDataMessageReader == nullptr) {
+            rc = -51;
+          } else {
+            if (dataFiles[dataFileIndex].schemaVersion != capnpRowSchema.schemaVersion) {
+              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader),
+                                                      capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
+                                                      capnpRowSchema);
+              if (newMessage == nullptr)
+                rc = -52;
+              else
+                tmpDataMessageReader = std::make_unique<capnp::FlatArrayMessageReader>(
+                  capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
 
-      if (!capnpDataToMysqlBuffer(buf, dataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema)))
-        DBUG_RETURN(-44);
+            }
+
+            if (!capnpDataToMysqlBuffer(buf, tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+              rc = -53;
+          }
+        }
+      } catch (kj::Exception &e) {
+        std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+                  << ", exception_line: "
+                  << e.getLine() << ", type: " << (int) e.getType()
+                  << ", e.what(): " << e.getDescription().cStr() << std::endl;
+        rc = -54;
+      } catch (std::exception &e) {
+        std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+                  << e.what() << std::endl;
+        rc = -55;
+      }
     } else {
       rc = HA_ERR_RECORD_DELETED;
     }
@@ -779,15 +840,16 @@ int crunch::consolidateFiles() {
 
       // If the schema version are not the same, we need to decode and re-encode the row so we can convert the
       // message to the latest schema version
-      if(dataFiles[dataFileIndex].schemaVersion != schemaVersion) {
+      if (dataFiles[dataFileIndex].schemaVersion != schemaVersion) {
         /*
          * Originally the idea was to just call capnpDataToMysqlBuffer but turns out building an array
          * of *Field is not realistically doable. Instead we will using
          * updateMessageToSchema(message, old_schema, new_schema) in order to upgrade a messages content
          */
-        message = updateMessageToSchema(std::move(rowRead), capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion], capnpRowSchemas.rbegin()->second);
+        message = updateMessageToSchema(std::move(rowRead), capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
+                                        capnpRowSchemas[schemaVersion]);
       } else {
-        capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema);
+        capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema);
         message->setRoot(messageRoot);
       }
       write_message(std::move(message), txn);
@@ -918,11 +980,11 @@ int crunch::findTableFiles(std::string folderName) {
           // Get schema struct name from mysql filepath name
           std::string structName = parseFileNameForStructName(name);
           // Get the nested structure from file, for now there is only a single struct in the schema files
-          capnpRowSchema = capnpParsedSchema.getNested(structName).asStruct();
 
-          schema schemaStruct = {capnpRowSchema, minimumCompatibleSchemaVersion};
+          capnpRowSchema = {capnpParsedSchema.getNested(structName).asStruct(), minimumCompatibleSchemaVersion,
+                            schema_version};
 
-          capnpRowSchemas[schema_version] = schemaStruct;
+          capnpRowSchemas[schema_version] = capnpRowSchema;
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
                     << ", exception_line: "
@@ -1003,14 +1065,15 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   if (dataFiles.size() > 0) {
     data dataStruct = dataFiles[dataFileIndex];
     currentDataFile = dataStruct.fileName;
-    ret = -2;
+    /*ret = -2;
     for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
       if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
         capnpRowSchema = i->second.schema;
         ret = 0;
         break;
       }
-    }
+    }*/
+    capnpRowSchema = capnpRowSchemas.rbegin()->second;
   }
 
   // Build file names for ondisk
@@ -1265,7 +1328,8 @@ crunch::check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_inf
     if (checkIfColumnChangeSupportedInplace(altered_table)) {
       DBUG_RETURN(HA_ALTER_INPLACE_NO_LOCK);
     }
-    DBUG_PRINT("crunch::check_if_supported_inplace_alter",("%s: Alter in place not supported based on columns that are changing", name.c_str()));
+    DBUG_PRINT("crunch::check_if_supported_inplace_alter",
+               ("%s: Alter in place not supported based on columns that are changing", name.c_str()));
     DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
   }
   DBUG_RETURN(enum_alter_inplace_result::HA_ALTER_INPLACE_NOT_SUPPORTED);
@@ -1398,9 +1462,9 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
       ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
     DBUG_RETURN(ctx->buildNewCapnpSchema());
   }
-  if(ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
-    ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
-    ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE)
+  if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE)
     DBUG_RETURN(false);
   DBUG_RETURN(true);
 }

@@ -159,7 +159,7 @@ private:
 
     ::capnp::ParsedSchema capnpParsedSchema;
     std::map<uint64_t, ::capnp::ParsedSchema> capnpParsedSchemas;
-    ::capnp::StructSchema capnpRowSchema;
+    schema capnpRowSchema;
     std::map<uint64_t, schema> capnpRowSchemas;
     ::capnp::SchemaParser parser;
 

@@ -35,6 +35,7 @@
 typedef struct schema_struct {
     ::capnp::StructSchema schema;
     uint64_t minimumCompatibleSchemaVersion;
+    uint64_t schemaVersion;
 } schema;
 
 typedef struct data_struct {
