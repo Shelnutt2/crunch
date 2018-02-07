@@ -170,11 +170,11 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       if (nulls.size() <= colNumber) {
         if ((*field)->maybe_null()) {
           (*field)->set_null();
+          continue;
         } else {
           (*field)->set_notnull();
-          ulong field_offset = (*field)->ptr - table->record[0];
-          memcpy((*field)->ptr, table->s->default_values + field_offset,
-                 (*field)->pack_length());
+          (*field)->set_default();
+          continue;
         }
       } else if (nulls[colNumber].as<bool>()) {
         (*field)->set_null();
@@ -256,14 +256,6 @@ int crunch::rnd_init(bool scan) {
   data dataStruct = dataFiles[dataFileIndex];
   if (dataFiles.size() > 0) {
     currentDataFile = dataStruct.fileName;
-    /*ret = -2;
-    for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
-      if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
-        capnpRowSchema = i->second.schema;
-        ret = 0;
-        break;
-      }
-    }*/
     capnpRowSchema = capnpRowSchemas.rbegin()->second;
   }
 
@@ -307,14 +299,6 @@ std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
       dataPointerNext = dataFileStart;
       currentDataFile = dataStruct.fileName;
 
-      /**err = -2;
-      for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
-        if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
-          capnpRowSchema = i->second.schema;
-          *err = 0;
-          break;
-        }
-      }*/
       capnpRowSchema = capnpRowSchemas.rbegin()->second;
       if (!*err)
         DBUG_RETURN(rnd_row(err));
@@ -399,14 +383,6 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
       data dataStruct = dataFiles[dataFileIndex];
       DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
       mmapData(dataStruct.fileName);
-      /*rc = -2;
-      for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
-        if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
-          capnpRowSchema = i->second.schema;
-          rc = 0;
-          break;
-        }
-      }*/
       capnpRowSchema = capnpRowSchemas.rbegin()->second;
       dataPointer = dataFileStart;
       dataPointerNext = dataFileStart;
@@ -1065,14 +1041,6 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   if (dataFiles.size() > 0) {
     data dataStruct = dataFiles[dataFileIndex];
     currentDataFile = dataStruct.fileName;
-    /*ret = -2;
-    for (auto i = capnpRowSchemas.rbegin(); i != capnpRowSchemas.rend(); i--) {
-      if (i->second.minimumCompatibleSchemaVersion <= dataStruct.schemaVersion) {
-        capnpRowSchema = i->second.schema;
-        ret = 0;
-        break;
-      }
-    }*/
     capnpRowSchema = capnpRowSchemas.rbegin()->second;
   }
 
