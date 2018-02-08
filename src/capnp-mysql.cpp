@@ -41,7 +41,7 @@ uint64_t generateRandomId() {
 
   ssize_t n;
   KJ_SYSCALL(n = read(fd, &result, sizeof(result)), "/dev/urandom");
-    KJ_ASSERT(n == sizeof(result), "Incomplete read from /dev/urandom.", n);
+      KJ_ASSERT(n == sizeof(result), "Incomplete read from /dev/urandom.", n);
 #endif
 
   return result | (1ull << 63);
@@ -163,17 +163,19 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
 
   output += "  " + std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   output +=
-    "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
+      "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
   for (Field **field = fields; *field; field++) {
-    output += "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + NON_MYSQL_FIELD_COUNT) + " :" +
-              getCapnpTypeFromField(*field) + ";\n";
+    output +=
+        "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + NON_MYSQL_FIELD_COUNT) +
+        " :" +
+        getCapnpTypeFromField(*field) + ";\n";
 
   }
 
   output += "}";
 
   output +=
-    "\n\nconst minimumCompatibleSchemaVersion :UInt64 = " + std::to_string(minimumCompatibleSchemaVersion) + ";";
+      "\n\nconst minimumCompatibleSchemaVersion :UInt64 = " + std::to_string(minimumCompatibleSchemaVersion) + ";";
 
   return output;
 }
@@ -209,18 +211,37 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
 
     capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
-                                                        oldSchemaFields.size() - NON_MYSQL_FIELD_COUNT).as<capnp::DynamicList>();
+                                                        oldSchemaFields.size() -
+                                                        NON_MYSQL_FIELD_COUNT).as<capnp::DynamicList>();
 
     capnp::DynamicStruct::Reader rowReader = message->getRoot<capnp::DynamicStruct>(oldSchema.schema);
     //Get nulls
     auto nullsReader = rowReader.get(NULL_COLUMN_FIELD).as<capnp::DynamicList>();
     capnp::StructSchema::Field oldSchemaField, newSchemaField;
     //Start at 2 because first two variables are null list and schema version
-    for (uint i = NON_MYSQL_FIELD_COUNT; i < oldSchemaFields.size(); i++) {
-      if (i >= newSchemaFields.size())
-        break;
-      oldSchemaField = oldSchemaFields[i];
+    uint i;
+    for (i = NON_MYSQL_FIELD_COUNT; i < newSchemaFields.size(); i++) {
       newSchemaField = newSchemaFields[i];
+      if (i >= oldSchemaFields.size()) {
+        if (newSchemaField.getType().isUInt8()
+            || newSchemaField.getType().isUInt16()
+            || newSchemaField.getType().isUInt32()
+            || newSchemaField.getType().isUInt64()
+            || newSchemaField.getType().isInt8()
+            || newSchemaField.getType().isInt16()
+            || newSchemaField.getType().isInt32()
+            || newSchemaField.getType().isInt64()
+            || newSchemaField.getType().isFloat32()
+            || newSchemaField.getType().isFloat64()
+            || newSchemaField.getType().isBool()) {
+          rowBuilder.set(newSchemaField.getProto().getName(), 0);
+        } else if (newSchemaField.getType().isText()
+                   || newSchemaField.getType().isData()) {
+          rowBuilder.set(newSchemaField.getProto().getName(), "");
+        }
+        continue;
+      }
+      oldSchemaField = oldSchemaFields[i];
       //Check if the field is null, if it is we don't need to set anything
       if (nullsReader[i - NON_MYSQL_FIELD_COUNT].as<bool>()) {
         nulls.set(i - NON_MYSQL_FIELD_COUNT, true);
@@ -271,7 +292,7 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
               } else if (newSchemaField.getType().isUInt64()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::stoull(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<capnp::Text>().cStr()));
 
               } else if (newSchemaField.getType().isFloat32()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
@@ -307,7 +328,7 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
               if (oldSchemaField.getType().isUInt8()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<uint8_t>()).c_str());
               } else {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(rowReader.get(oldSchemaField.getProto().getName()).as<int8_t>()).c_str());
@@ -336,11 +357,11 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
               if (oldSchemaField.getType().isUInt16()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<uint16_t>()).c_str());
               } else {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<int16_t>()).c_str());
               }
             }
           } else if (oldSchemaField.getType().isInt32() || oldSchemaField.getType().isUInt32()) {
@@ -370,11 +391,11 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
               if (oldSchemaField.getType().isUInt32()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<uint32_t>()).c_str());
               } else {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<int32_t>()).c_str());
               }
             }
           } else if (oldSchemaField.getType().isInt64() || oldSchemaField.getType().isUInt64()) {
@@ -394,25 +415,25 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
               rowBuilder.set(newSchemaField.getProto().getName(),
                              rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>());
             } else if (newSchemaField.getType().isUInt8()) {
-                rowBuilder.set(newSchemaField.getProto().getName(),
-                               static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
-              } else if (newSchemaField.getType().isUInt16()) {
-                rowBuilder.set(newSchemaField.getProto().getName(),
-                               static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
-              } else if (newSchemaField.getType().isUInt32()) {
-                rowBuilder.set(newSchemaField.getProto().getName(),
-                               static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint8_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isUInt16()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint16_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
+            } else if (newSchemaField.getType().isUInt32()) {
+              rowBuilder.set(newSchemaField.getProto().getName(),
+                             static_cast<uint32_t>(rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()));
             } else if (newSchemaField.getType().isText()
                        || newSchemaField.getType().isData()) {
               // Only string values need to be treated differently
               if (oldSchemaField.getType().isUInt64()) {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<uint64_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<uint64_t>()).c_str());
               } else {
                 rowBuilder.set(newSchemaField.getProto().getName(),
                                std::to_string(
-                                 rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()).c_str());
+                                   rowReader.get(oldSchemaField.getProto().getName()).as<int64_t>()).c_str());
               }
             }
           } else if (oldSchemaField.getType().isFloat32()) {
@@ -502,5 +523,5 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
   }
 
   return
-    std::move(tableRow);
+      std::move(tableRow);
 }
