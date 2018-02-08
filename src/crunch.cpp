@@ -278,7 +278,7 @@ std::unique_ptr<capnp::FlatArrayMessageReader> crunch::rnd_row(int *err) {
     dataPointerNext = tmpDataMessageReader->getEnd();
     uint64_t rowStartLocation = (dataPointer - dataFileStart);
     if (!checkForDeletedRow(currentDataFile, rowStartLocation)) {
-      DBUG_RETURN(std::move(tmpDataMessageReader));
+      DBUG_RETURN(tmpDataMessageReader);
       //currentRowNumber++;
     } else {
       DBUG_RETURN(rnd_row(err));
@@ -1568,7 +1568,7 @@ crunch_share *crunch::get_share() {
 bool crunch::checkIfColumnChangeSupportedInplace(TABLE *alteredTable) {
   DBUG_ENTER("crunch::checkIfColumnChangeSupportedInplace");
   for (unsigned int i = 0; i < alteredTable->s->fields; i++) {
-    Field *originalField;
+    Field *originalField = nullptr;
     Field *alteredField = alteredTable->field[i];
     if (!strcmp(table->field[i]->field_name, alteredField->field_name)) {
       originalField = table->field[i];
