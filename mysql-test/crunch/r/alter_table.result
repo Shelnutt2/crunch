@@ -286,3 +286,82 @@ column1	column2	column3
 5	dmFsdWU	NULL
 7	test	1337
 DROP TABLE t1;
+# Test multiple inline alters ALGORITH=INPLACE
+CREATE TABLE t1 (
+column1 mediumint,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+3	dmFsdWUy
+5	dmFsdWU
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ADD COLUMN column4 int DEFAULT 10, MODIFY COLUMN column1 bigint, ALGORITHM=INPLACE;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+column1	column2	column3	column4
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL	NULL
+3	dmFsdWUy	NULL	NULL
+5	dmFsdWU	NULL	NULL
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` bigint(20) DEFAULT NULL,
+  `column2` varchar(255) DEFAULT NULL,
+  `column3` varchar(255) DEFAULT NULL,
+  `column4` int(11) DEFAULT 10
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=2
+INSERT INTO t1 VALUES (7, 'test', 'test2', 1337);
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+column1	column2	column3	column4
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL	NULL
+3	dmFsdWUy	NULL	NULL
+5	dmFsdWU	NULL	NULL
+7	test	test2	1337
+FLUSH TABLES t1;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+column1	column2	column3	column4
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=	NULL	NULL
+3	dmFsdWUy	NULL	NULL
+5	dmFsdWU	NULL	NULL
+7	test	test2	1337
+DROP TABLE t1;
+# Test multiple inline alters with drop ALGORITH=INPLACE
+CREATE TABLE t1 (
+column1 mediumint,
+column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+column1	column2
+1	aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+3	dmFsdWUy
+5	dmFsdWU
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ADD COLUMN column4 int DEFAULT 10, MODIFY COLUMN column1 bigint, DROP COLUMN column2, ALGORITHM=INPLACE;
+select column1, column3, column4 FROM t1 ORDER BY column1;
+column1	column3	column4
+1	NULL	NULL
+3	NULL	NULL
+5	NULL	NULL
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `column1` bigint(20) DEFAULT NULL,
+  `column3` varchar(255) DEFAULT NULL,
+  `column4` int(11) DEFAULT 10
+) ENGINE=Crunch DEFAULT CHARSET=latin1 `CONSOLIDATION_THRESHOLD`=2
+INSERT INTO t1 VALUES (7, 'test2', 1337);
+select column1, column3, column4 FROM t1 ORDER BY column1;
+column1	column3	column4
+1	NULL	NULL
+3	NULL	NULL
+5	NULL	NULL
+7	test2	1337
+FLUSH TABLES t1;
+select column1, column3, column4 FROM t1 ORDER BY column1;
+column1	column3	column4
+1	NULL	NULL
+3	NULL	NULL
+5	NULL	NULL
+7	test2	1337
+DROP TABLE t1;
