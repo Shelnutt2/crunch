@@ -316,14 +316,20 @@ int crunch::rnd_next(uchar *buf) {
 
   try {
     std::unique_ptr<capnp::FlatArrayMessageReader> rowRead = rnd_row(&rc);
-    if(!rc) {
-      if(rowRead == nullptr) {
+    if (!rc) {
+      if (rowRead == nullptr) {
         rc = -41;
       } else {
-        if (dataFiles[dataFileIndex].schemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
-          auto newMessage = updateMessageToSchema(std::move(rowRead),
-                                                  capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
-                                                  capnpRowSchema);
+        uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
+        if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
+          schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
+          for (auto schemaIt = capnpRowSchemas.rbegin(); schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
+            if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
+              maxCompatibleSchema = schemaIt->second;
+              break;
+            }
+          }
+          auto newMessage = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
           if (newMessage == nullptr)
             rc = -42;
           else
@@ -392,28 +398,37 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
       auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
           kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       try {
-        if(!rc) {
-          if(tmpDataMessageReader == nullptr) {
+        if (!rc) {
+          if (tmpDataMessageReader == nullptr) {
             rc = -51;
           } else {
-            if (dataFiles[dataFileIndex].schemaVersion != capnpRowSchema.schemaVersion) {
-              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader),
-                                                      capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
+            uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
+            if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
+              schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
+              for (auto schemaIt = capnpRowSchemas.rbegin(); schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
+                if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
+                  maxCompatibleSchema = schemaIt->second;
+                  break;
+                }
+              }
+              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader), maxCompatibleSchema,
                                                       capnpRowSchema);
               if (newMessage == nullptr)
                 rc = -52;
               else
                 tmpDataMessageReader = std::make_unique<capnp::FlatArrayMessageReader>(
-                  capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
+                    capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
 
             }
 
-            if (!capnpDataToMysqlBuffer(buf, tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+            if (!capnpDataToMysqlBuffer(buf,
+                                        tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
               rc = -53;
           }
         }
       } catch (kj::Exception &e) {
-        std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+        std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+                  << __LINE__
                   << ", exception_line: "
                   << e.getLine() << ", type: " << (int) e.getType()
                   << ", e.what(): " << e.getDescription().cStr() << std::endl;
@@ -814,16 +829,23 @@ int crunch::consolidateFiles() {
       if (rowRead == NULL)
         break;
 
+      uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
       // If the schema version are not the same, we need to decode and re-encode the row so we can convert the
       // message to the latest schema version
-      if (dataFiles[dataFileIndex].schemaVersion != schemaVersion) {
+      if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
+        schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
+        for (auto schemaIt = capnpRowSchemas.rbegin(); schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
+          if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
+            maxCompatibleSchema = schemaIt->second;
+            break;
+          }
+        }
         /*
          * Originally the idea was to just call capnpDataToMysqlBuffer but turns out building an array
          * of *Field is not realistically doable. Instead we will using
          * updateMessageToSchema(message, old_schema, new_schema) in order to upgrade a messages content
          */
-        message = updateMessageToSchema(std::move(rowRead), capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
-                                        capnpRowSchemas[schemaVersion]);
+        message = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
       } else {
         capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema);
         message->setRoot(messageRoot);
@@ -1105,8 +1127,10 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
-  std::string capnpSchema = buildCapnpLimitedSchema(std::vector<Field*>(table_arg->s->field, table_arg->s->field + table_arg->s->fields), parseFileNameForStructName(name), &err, 0, 1,
-                                                    1);
+  std::string capnpSchema = buildCapnpLimitedSchema(
+      std::vector<Field *>(table_arg->s->field, table_arg->s->field + table_arg->s->fields),
+      parseFileNameForStructName(name), &err, 0, 1,
+      1);
 
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
   // Let mysql create the file for us
@@ -1336,7 +1360,7 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
     DBUG_RETURN(false);
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
-    std::map<unsigned int, Field*> fieldMap;
+    std::map<unsigned int, Field *> fieldMap;
     unsigned int newFieldsOffset = 0;
     for (unsigned int i = 0; i < altered_table->s->fields; i++) {
       if (i < table->s->fields && !strcmp(table->field[i]->field_name, altered_table->field[i]->field_name)) {
@@ -1351,13 +1375,13 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
           }
         }
         if (!foundField) {
-            fieldMap[table->s->fields + newFieldsOffset] = altered_table->field[i];
-            newFieldsOffset++;
+          fieldMap[table->s->fields + newFieldsOffset] = altered_table->field[i];
+          newFieldsOffset++;
         }
       }
     }
-    std::vector<Field*> newFields;
-    for(auto field : fieldMap) {
+    std::vector<Field *> newFields;
+    for (auto field : fieldMap) {
       newFields.push_back(field.second);
     }
     handlerCtx->fields = newFields;
@@ -1397,11 +1421,11 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
   crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
   // If we are altering a the schema, build new schema
-  if(ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
-     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
-     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
-     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
-     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
+  if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
+      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
     DBUG_RETURN(ctx->buildNewCapnpSchema(false));
   }
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME ||
