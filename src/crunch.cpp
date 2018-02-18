@@ -338,7 +338,7 @@ int crunch::rnd_next(uchar *buf) {
 
         }
 
-        if (!capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+        if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
           rc = -43;
       }
     }
@@ -421,7 +421,7 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
 
             }
 
-            if (!capnpDataToMysqlBuffer(buf,
+            if (!rc && !capnpDataToMysqlBuffer(buf,
                                         tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
               rc = -53;
           }
@@ -865,7 +865,7 @@ int crunch::consolidateFiles() {
   } catch (const std::exception &e) {
     // Log errors
     std::cerr << "close error: " << e.what() << std::endl;
-    res = 331;
+    res = 332;
   }
   delete txn;
   DBUG_RETURN(res);
