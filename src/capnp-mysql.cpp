@@ -152,7 +152,8 @@ bool checkIfMysqlColumnTypeCapnpCompatible(Field *field1, Field *field2) {
  * @return
  */
 std::string
-buildCapnpLimitedSchema(std::vector<Field*> fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
+buildCapnpLimitedSchema(std::vector<Field *> fields, std::string structName, int *err, uint64_t id,
+                        uint64_t schemaVersion,
                         uint64_t minimumCompatibleSchemaVersion) {
 
   if (id == 0) {
@@ -211,7 +212,7 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
 
     capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
-                                                        oldSchemaFields.size() -
+                                                        std::max(oldSchemaFields.size(), newSchemaFields.size()) -
                                                         NON_MYSQL_FIELD_COUNT).as<capnp::DynamicList>();
 
     capnp::DynamicStruct::Reader rowReader = message->getRoot<capnp::DynamicStruct>(oldSchema.schema);
@@ -222,7 +223,17 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     uint i;
     for (i = NON_MYSQL_FIELD_COUNT; i < newSchemaFields.size(); i++) {
       newSchemaField = newSchemaFields[i];
-      if (i >= oldSchemaFields.size()) {
+
+      bool foundFieldInOldSchema = false;
+      //Find field with same name in old Schema
+      for (uint j = 0; j < oldSchemaFields.size(); j++) {
+        if (oldSchemaFields[j].getProto().getName() == newSchemaField.getProto().getName()) {
+          oldSchemaField = oldSchemaFields[j];
+          foundFieldInOldSchema = true;
+          break;
+        }
+      }
+      if (!foundFieldInOldSchema) {
         if (newSchemaField.getType().isUInt8()
             || newSchemaField.getType().isUInt16()
             || newSchemaField.getType().isUInt32()
@@ -235,13 +246,14 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
             || newSchemaField.getType().isFloat64()
             || newSchemaField.getType().isBool()) {
           rowBuilder.set(newSchemaField.getProto().getName(), 0);
+          nulls.set(i - NON_MYSQL_FIELD_COUNT, true);
         } else if (newSchemaField.getType().isText()
                    || newSchemaField.getType().isData()) {
           rowBuilder.set(newSchemaField.getProto().getName(), "");
+          nulls.set(i - NON_MYSQL_FIELD_COUNT, true);
         }
         continue;
       }
-      oldSchemaField = oldSchemaFields[i];
       //Check if the field is null, if it is we don't need to set anything
       if (nullsReader[i - NON_MYSQL_FIELD_COUNT].as<bool>()) {
         nulls.set(i - NON_MYSQL_FIELD_COUNT, true);

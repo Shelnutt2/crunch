@@ -22,7 +22,7 @@ crunchInplaceAlterCtx::crunchInplaceAlterCtx(std::string baseDirectory, std::str
   this->transactionDirectory = transactionDirectory;
   this->alteredTable = alteredTable;
   this->schemaVersion = schemaVersion;
-  this->fields = std::vector<Field*>(alteredTable->field, alteredTable->field + alteredTable->s->fields);
+  this->fields = std::vector<Field *>(alteredTable->field, alteredTable->field + alteredTable->s->fields);
 }
 
 /**
@@ -30,15 +30,18 @@ crunchInplaceAlterCtx::crunchInplaceAlterCtx(std::string baseDirectory, std::str
  *
  * @return false on success, true on failure
  */
-bool crunchInplaceAlterCtx::buildNewCapnpSchema() {
+bool crunchInplaceAlterCtx::buildNewCapnpSchema(bool compatible) {
   char name_buff[FN_REFLEN];
   File create_file;
   int err = 0;
   // Set new schema version to current version +1;
   uint64_t newSchemaVersion = this->schemaVersion + 1;
+  uint64_t minimumCompatibleSchemaVersion = newSchemaVersion;
+  if (compatible)
+    minimumCompatibleSchemaVersion = this->schemaVersion;
   std::string schemaName = parseFileNameForStructName(this->baseDirectory);
   std::string newSchema = buildCapnpLimitedSchema(this->fields, schemaName, &err, 0, newSchemaVersion,
-                                                  this->schemaVersion);
+                                                  minimumCompatibleSchemaVersion);
 
   //Build base schemaFileName
   this->schemaFileName =

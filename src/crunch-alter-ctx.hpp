@@ -22,7 +22,7 @@ public:
 
     ~crunchInplaceAlterCtx() {}
 
-    bool buildNewCapnpSchema();
+    bool buildNewCapnpSchema(bool compatible);
 
     bool commit();
 

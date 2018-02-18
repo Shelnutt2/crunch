@@ -320,7 +320,7 @@ int crunch::rnd_next(uchar *buf) {
       if(rowRead == nullptr) {
         rc = -41;
       } else {
-        if (dataFiles[dataFileIndex].schemaVersion != capnpRowSchema.schemaVersion) {
+        if (dataFiles[dataFileIndex].schemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
           auto newMessage = updateMessageToSchema(std::move(rowRead),
                                                   capnpRowSchemas[dataFiles[dataFileIndex].schemaVersion],
                                                   capnpRowSchema);
@@ -1333,15 +1333,9 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
   ha_alter_info->handler_ctx = handlerCtx;
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(false);
-/*  } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
-    //free(altered_table->field);
-    //altered_table->field = table->field;
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
+    DBUG_RETURN(false);
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
-    */
-  } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
-  ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
-    //std::vector<Field *> fields;//(altered_table->s->fields);
-    //std::vector<Field *> newFields;//(altered_table->s->fields);
     std::map<unsigned int, Field*> fieldMap;
     unsigned int newFieldsOffset = 0;
     for (unsigned int i = 0; i < altered_table->s->fields; i++) {
@@ -1403,14 +1397,16 @@ bool crunch::inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_al
   DBUG_ENTER("crunch::prepare_inplace_alter_table");
   crunchInplaceAlterCtx *ctx = static_cast<crunchInplaceAlterCtx *>(ha_alter_info->handler_ctx);
   // If we are altering a the schema, build new schema
+  if(ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
+     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
+     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
+     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
+     ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
+    DBUG_RETURN(ctx->buildNewCapnpSchema(false));
+  }
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
-      ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_TYPE ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_STORAGE_TYPE ||
-      ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH) {
-    DBUG_RETURN(ctx->buildNewCapnpSchema());
+      ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+    DBUG_RETURN(ctx->buildNewCapnpSchema(true));
   }
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_STORED_COLUMN_ORDER ||
       ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NULLABLE ||
