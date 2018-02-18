@@ -1105,7 +1105,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
-  std::string capnpSchema = buildCapnpLimitedSchema(table_arg->s->field, parseFileNameForStructName(name), &err, 0, 1,
+  std::string capnpSchema = buildCapnpLimitedSchema(std::vector<Field*>(table_arg->s->field, table_arg->s->field + table_arg->s->fields), parseFileNameForStructName(name), &err, 0, 1,
                                                     1);
 
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
@@ -1333,58 +1333,40 @@ bool crunch::prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_inf
   ha_alter_info->handler_ctx = handlerCtx;
   if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_NAME) {
     DBUG_RETURN(false);
-  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN ||
-             ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
-    std::vector<Field *> newFields(altered_table->s->fields);
+/*  } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN) {
+    //free(altered_table->field);
+    //altered_table->field = table->field;
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+    */
+  } else if (ha_alter_info->handler_flags & Alter_inplace_info::DROP_STORED_COLUMN ||
+  ha_alter_info->handler_flags & Alter_inplace_info::ADD_STORED_BASE_COLUMN) {
+    //std::vector<Field *> fields;//(altered_table->s->fields);
+    //std::vector<Field *> newFields;//(altered_table->s->fields);
+    std::map<unsigned int, Field*> fieldMap;
     unsigned int newFieldsOffset = 0;
     for (unsigned int i = 0; i < altered_table->s->fields; i++) {
-      if (i < table->s->fields) {
-        if (!strcmp(table->field[i]->field_name, altered_table->field[i]->field_name)) {
-          newFields[i] = altered_table->field[i];
-        } else {
-          bool foundField = false;
-          for (unsigned int j = 0; j < table->s->fields; j++) {
-            if (!strcmp(table->field[j]->field_name, altered_table->field[i]->field_name)) {
-              newFields[j] = altered_table->field[i];
-              foundField = true;
-              break;
-            }
-          }
-          if (!foundField) {
-            if (table->s->fields + newFieldsOffset < altered_table->s->fields) {
-              newFields[table->s->fields + newFieldsOffset] = altered_table->field[i];
-              newFieldsOffset++;
-            } else {
-              std::cerr
-                  << "prepare_inplace_alter_table::ALTER_COLUMN_NAME: error number of fields greater than allocation, inner"
-                  << std::endl;
-              DBUG_RETURN(true);
-            }
-          }
-        }
+      if (i < table->s->fields && !strcmp(table->field[i]->field_name, altered_table->field[i]->field_name)) {
+        fieldMap[i] = altered_table->field[i];
       } else {
         bool foundField = false;
         for (unsigned int j = 0; j < table->s->fields; j++) {
           if (!strcmp(table->field[j]->field_name, altered_table->field[i]->field_name)) {
-            newFields[j] = altered_table->field[i];
+            fieldMap[j] = altered_table->field[i];
             foundField = true;
             break;
           }
         }
         if (!foundField) {
-          if (table->s->fields + newFieldsOffset < altered_table->s->fields) {
-            newFields[table->s->fields + newFieldsOffset] = altered_table->field[i];
+            fieldMap[table->s->fields + newFieldsOffset] = altered_table->field[i];
             newFieldsOffset++;
-          } else {
-            std::cerr
-                << "prepare_inplace_alter_table::ALTER_COLUMN_NAME: error number of fields greater than allocation, second"
-                << std::endl;
-            DBUG_RETURN(true);
-          }
         }
       }
     }
-    std::copy(newFields.begin(), newFields.end(), altered_table->field);
+    std::vector<Field*> newFields;
+    for(auto field : fieldMap) {
+      newFields.push_back(field.second);
+    }
+    handlerCtx->fields = newFields;
 
     DBUG_RETURN(false);
   } else if (ha_alter_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_COLUMN_FORMAT ||

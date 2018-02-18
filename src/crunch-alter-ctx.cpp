@@ -22,6 +22,7 @@ crunchInplaceAlterCtx::crunchInplaceAlterCtx(std::string baseDirectory, std::str
   this->transactionDirectory = transactionDirectory;
   this->alteredTable = alteredTable;
   this->schemaVersion = schemaVersion;
+  this->fields = std::vector<Field*>(alteredTable->field, alteredTable->field + alteredTable->s->fields);
 }
 
 /**
@@ -36,7 +37,7 @@ bool crunchInplaceAlterCtx::buildNewCapnpSchema() {
   // Set new schema version to current version +1;
   uint64_t newSchemaVersion = this->schemaVersion + 1;
   std::string schemaName = parseFileNameForStructName(this->baseDirectory);
-  std::string newSchema = buildCapnpLimitedSchema(this->alteredTable->field, schemaName, &err, 0, newSchemaVersion,
+  std::string newSchema = buildCapnpLimitedSchema(this->fields, schemaName, &err, 0, newSchemaVersion,
                                                   this->schemaVersion);
 
   //Build base schemaFileName

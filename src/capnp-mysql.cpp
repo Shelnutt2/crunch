@@ -152,7 +152,7 @@ bool checkIfMysqlColumnTypeCapnpCompatible(Field *field1, Field *field2) {
  * @return
  */
 std::string
-buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
+buildCapnpLimitedSchema(std::vector<Field*> fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
                         uint64_t minimumCompatibleSchemaVersion) {
 
   if (id == 0) {
@@ -164,11 +164,11 @@ buildCapnpLimitedSchema(Field **fields, std::string structName, int *err, uint64
   output += "  " + std::string(NULL_COLUMN_FIELD) + " @0 :List(Bool);\n";
   output +=
       "  " + std::string(CAPNP_SCHEMA_VERSION_COLUMN_FIELD) + " @1 :UInt64 = " + std::to_string(schemaVersion) + ";\n";
-  for (Field **field = fields; *field; field++) {
+  for (auto field : fields) {
     output +=
-        "  " + camelCase((*field)->field_name) + " @" + std::to_string((*field)->field_index + NON_MYSQL_FIELD_COUNT) +
+        "  " + camelCase(field->field_name) + " @" + std::to_string(field->field_index + NON_MYSQL_FIELD_COUNT) +
         " :" +
-        getCapnpTypeFromField(*field) + ";\n";
+        getCapnpTypeFromField(field) + ";\n";
 
   }
 

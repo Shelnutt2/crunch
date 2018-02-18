@@ -8,6 +8,7 @@
 #include <handler.h>
 #include <table.h>
 #include <cstdint>
+#include <vector>
 
 
 /**
@@ -26,6 +27,8 @@ public:
     bool commit();
 
     bool rollback();
+
+    std::vector<Field*> fields;
 
 private:
     std::string baseDirectory;

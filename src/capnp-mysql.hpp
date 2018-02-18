@@ -23,6 +23,7 @@
 #include <field.h>
 #include <capnp/serialize.h>
 #include <memory>
+#include <vector>
 
 #ifndef NULL_COLUMN_FIELD
 #define NULL_COLUMN_FIELD "nullColumns"
@@ -50,7 +51,7 @@ typedef struct data_struct {
 uint64_t generateRandomId();
 
 std::string
-buildCapnpLimitedSchema(Field **field, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
+buildCapnpLimitedSchema(std::vector<Field*> fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
                         uint64_t minimumCompatibleSchemaVersion);
 
 std::string getCapnpTypeFromField(Field *field);
