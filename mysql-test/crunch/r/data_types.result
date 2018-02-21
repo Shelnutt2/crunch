@@ -334,3 +334,18 @@ select ST_AsText(column1) FROM t1;
 ST_AsText(column1)
 POINT(10 10)
 DROP TABLE t1;
+# UNSIGNED INTEGER
+CREATE TABLE t1 (
+column1 smallint unsigned
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1);
+INSERT INTO t1 VALUES (-1);
+Warnings:
+Warning	1264	Out of range value for column 'column1' at row 1
+INSERT INTO t1 VALUES (65535);
+select * FROM t1 ORDER BY column1 ASC;
+column1
+0
+1
+65535
+DROP TABLE t1;
