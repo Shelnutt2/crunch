@@ -534,6 +534,5 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     return nullptr;
   }
 
-  return
-      std::move(tableRow);
+  return tableRow;
 }
