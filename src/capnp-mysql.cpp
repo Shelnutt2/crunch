@@ -54,16 +54,24 @@ std::string getCapnpTypeFromField(Field *field) {
       return "Float32";
 
     case MYSQL_TYPE_TINY:
+      if(((Field_num*)field)->unsigned_flag)
+        return "UInt8";
       return "Int8";
     case MYSQL_TYPE_SHORT:
     case MYSQL_TYPE_YEAR:
+      if(((Field_num*)field)->unsigned_flag)
+        return "UInt16";
       return "Int16";
 
     case MYSQL_TYPE_INT24:
+      if(((Field_num*)field)->unsigned_flag)
+        return "UInt32";
       return "Int32";
 
     case MYSQL_TYPE_LONG:
     case MYSQL_TYPE_LONGLONG:
+      if(((Field_num*)field)->unsigned_flag)
+        return "UInt64";
       return "Int64";
 
     case MYSQL_TYPE_NULL:
