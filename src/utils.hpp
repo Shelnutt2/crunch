@@ -8,12 +8,16 @@
 
 #include <string>
 #include <vector>
+#include <regex>
 
 #define TABLE_CONSOLIDATE_DIRECTORY "consolidate"
 #define TABLE_DATA_EXTENSION ".capnpd"
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
+
+extern std::regex schemaFileExtensionRegex;
+extern std::regex dataFileExtensionRegex;
 
 /** Split string into a vector by regex
  *

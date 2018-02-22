@@ -1,0 +1,158 @@
+--echo #
+--echo # The purpose of this test is to test alter tables
+--echo #
+--echo # Basic Alter Column Name ALGORITHM=COPY
+
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 CHANGE COLUMN column2 column2New varchar(255), ALGORITHM=COPY;
+select column2New FROM t1 ORDER BY column1;
+show create table t1;
+
+--echo # Basic Alter Column Shrink Varchar ALGORITHM=COPY
+ALTER TABLE t1 MODIFY COLUMN column2New varchar(1), ALGORITHM=COPY;
+select column2New FROM t1 ORDER BY column1;
+show create table t1;
+
+--echo # Basic Rename Table
+RENAME TABLE t1 TO t1New;
+show create table t1New;
+
+--echo # Alter Table options
+ALTER TABLE t1New CONSOLIDATION_THRESHOLD=2, ALGORITHM=COPY;
+show create table t1New;
+
+DROP TABLE t1New;
+
+--echo # Alter Column Name ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 CHANGE COLUMN column2 column2New varchar(255), ALGORITHM=INPLACE;
+select column2New FROM t1 ORDER BY column1;
+show create table t1;
+
+DROP TABLE t1;
+
+--echo # Add New Column ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+show create table t1;
+ALTER TABLE t1 ADD COLUMN column4 int DEFAULT 10 NOT NULL, ALGORITHM=INPLACE;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+show create table t1;
+ALTER TABLE t1 ADD COLUMN column5 bigint DEFAULT -113 NOT NULL AFTER column3, ALGORITHM=INPLACE;
+select column1, column2, column3, column4, column5 FROM t1 ORDER BY column1;
+show create table t1;
+
+DROP TABLE t1;
+
+--echo # Add Change Column Nullability ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NOT NULL, ALGORITHM=INPLACE;
+show create table t1;
+INSERT INTO t1(column1) VALUES (5);
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 MODIFY COLUMN column2 varchar(255) NULL, ALGORITHM=INPLACE;
+show create table t1;
+INSERT INTO t1 (column1) VALUES (7);
+select column2 FROM t1 ORDER BY column1;
+
+DROP TABLE t1;
+
+--echo # Drop Column ALGORITHM=INPLACE
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+ALTER TABLE t1 DROP COLUMN column2, ALGORITHM=INPLACE;
+select column1 FROM t1 ORDER BY column1;
+show create table t1;
+
+DROP TABLE t1;
+
+--echo # Modify column data type ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (32767,'dmFsdWUy'), (65535,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 bigint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 smallint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+ALTER TABLE t1 MODIFY COLUMN column1 mediumint, ALGORITHM=INPLACE;
+show create table t1;
+select column1, column2 from t1;
+DROP TABLE t1;
+
+--echo # Test consolidation after column addition ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 ADD COLUMN column3 int DEFAULT 10, ALGORITHM=INPLACE;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+show create table t1;
+INSERT INTO t1 VALUES (7, 'test', 1337);
+select column1, column2, column3 FROM t1 ORDER BY column1;
+FLUSH TABLES t1;
+select column1, column2, column3 FROM t1 ORDER BY column1;
+DROP TABLE t1;
+
+--echo # Test multiple inline alters ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ADD COLUMN column4 int DEFAULT 10, ALGORITHM=INPLACE;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+show create table t1;
+INSERT INTO t1 VALUES (7, 'test', 'test2', 1337);
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+FLUSH TABLES t1;
+select column1, column2, column3, column4 FROM t1 ORDER BY column1;
+DROP TABLE t1;
+
+--echo # Test multiple inline alters with drop ALGORITH=INPLACE
+CREATE TABLE t1 (
+  column1 mediumint,
+  column2 varchar(255)
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=2;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (3,'dmFsdWUy'), (5,'dmFsdWU');
+select column1, column2 from t1;
+ALTER TABLE t1 ADD COLUMN column3 varchar(255) DEFAULT NULL, ADD COLUMN column4 int DEFAULT 10, DROP COLUMN column2, ALGORITHM=INPLACE;
+select column1, column3, column4 FROM t1 ORDER BY column1;
+show create table t1;
+INSERT INTO t1 VALUES (7, 'test2', 1337);
+select column1, column3, column4 FROM t1 ORDER BY column1;
+FLUSH TABLES t1;
+select column1, column3, column4 FROM t1 ORDER BY column1;
+DROP TABLE t1;

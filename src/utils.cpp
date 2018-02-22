@@ -20,6 +20,8 @@
 
 #endif
 
+std::regex schemaFileExtensionRegex(".(\\d+)"+std::string(TABLE_SCHEME_EXTENSION));
+std::regex dataFileExtensionRegex(".(\\d+)"+std::string(TABLE_DATA_EXTENSION));
 
 /** Split string into a vector by regex
  *
@@ -44,6 +46,9 @@ std::vector<std::string> split(const std::string& input, const std::string& rege
 std::string parseFileNameForStructName(std::string filepathName) {
   std::vector<std::string> parts = split(filepathName, "/");
   std::string name = parts[parts.size()-1];
+  // Cap'n Proto schema do not allow special characters
+  name.resize(std::remove_if(name.begin(), name.end(),[](char x){return !isalnum(x);})-name.begin());
+  // Cap'n Proto schema's require the first character to be upper case for struct names
   name[0] = toupper(name[0]);
   return name;
 }

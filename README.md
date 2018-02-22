@@ -39,6 +39,28 @@ cmake .. -DCRUNCH_COMPILE_STANDALONE=ON
 make -j4
 ```
 
+## Features
+
+### Inplace Alter Table
+
+In place alter tables are supported for column renames, column additions and
+some column data type changes.
+Adding of columns is supported at any position (LAST or AFTER supported).
+
+When altering tables, the on disk data format is not changed. A new schema is
+produced and when reading data it is converted on read to the new schema.
+
+If a default value is set for a column and the column is also set to null
+then the default value is not used, but the column will return null for
+existing data. This is a limitation that will be addressed in the future.
+
+For column data type changes, if the underlying type is similar, int16->int32
+or float64 -> float32, the change can be made online. There is no protection
+against decreased percision or overflow. Changing from a int64 to a int16
+is allowed, but could result in data loss if any values are larger than an
+int16. This is how mariadb normally works, so we've allowed it with online
+alters.
+
 ## Architecture
 
 ### On Disk Format

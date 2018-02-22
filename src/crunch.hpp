@@ -25,10 +25,12 @@
 #include <capnp/message.h>       /* Cap'n Proto Message */
 #include <capnp/serialize.h>     /* Cap'n Proto FlatArrayMessageReader */
 #include <capnp/dynamic.h>     /* Cap'n Proto DynamicStruct::Reader */
+#include <map>
 
 #include "crunchrowlocation.capnp.h"
 #include "crunch-txn.hpp"
 #include "crunch-sysvars.hpp"
+#include "capnp-mysql.hpp"
 
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
@@ -40,9 +42,6 @@ static PSI_mutex_key ex_key_mutex_Example_share_mutex;
   The option values can be specified in the CREATE TABLE at the end:
   CREATE TABLE ( ... ) *here*
 */
-
-static int crunch_commit(handlerton *hton, THD *thd, bool all);
-static int crunch_rollback(handlerton *hton, THD *thd, bool all);
 
 // Handler for crunch engine
 extern handlerton *crunch_hton;
@@ -93,11 +92,23 @@ class crunch : public handler {
     ulonglong table_flags(void) const;
     int create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_info);
     int delete_table(const char *name);
+    int rename_table(const char *from, const char *to);
     int readDeletesIntoMap(int deleteFileDescriptor);
     bool checkForDeletedRow(std::string fileName, uint64_t rowStartLocation);
     void markRowAsDeleted(std::string fileName, uint64_t rowStartLocation, uint64_t rowEndLocation);
     int start_stmt(THD *thd, thr_lock_type lock_type);
     static int disconnect(handlerton *hton, MYSQL_THD thd);
+
+
+    /* START INPLACE ALTER TABLE SUPPORT */
+    enum_alter_inplace_result check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+  private:
+    bool prepare_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+    bool inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
+    bool commit_inplace_alter_table(TABLE *altered_table, Alter_inplace_info *ha_alter_info, bool commit);
+    void notify_table_changed();
+    /* END INPLACE ALTER TABLE SUPPORT*/
+  public:
 
     static inline bool
     row_is_fixed_length(TABLE *table)
@@ -132,7 +143,8 @@ class crunch : public handler {
 
 private:
 
-    void capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
+    bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
+
 
     bool mmapData(std::string fileName);
     bool mremapData(std::string fileName);
@@ -146,14 +158,17 @@ private:
     crunch_share* get_share(); ///< Get the share
 
     ::capnp::ParsedSchema capnpParsedSchema;
-    ::capnp::StructSchema capnpRowSchema;
+    std::map<uint64_t, ::capnp::ParsedSchema> capnpParsedSchemas;
+    schema capnpRowSchema;
+    std::map<uint64_t, schema> capnpRowSchemas;
     ::capnp::SchemaParser parser;
 
     std::string baseFilePath;
     std::string folderName;
     std::string schemaFile;
+    std::map<uint64_t, std::string> schemaFiles;
     std::string currentDataFile;
-    std::vector<std::string> dataFiles;
+    std::vector<data> dataFiles;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
@@ -175,6 +190,9 @@ private:
     std::string name;
 
     ha_table_option_struct *options;
+    uint64_t schemaVersion;
+
+    bool checkIfColumnChangeSupportedInplace(TABLE *alteredTable);
 };
 
 
