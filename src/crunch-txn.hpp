@@ -29,6 +29,7 @@ typedef struct filesForTransaction {
     uint64_t schemaVersion;
 
     std::string dataExtension;
+    std::string dataDirectory;
 } filesForTransaction;
 
 class crunchTxn {

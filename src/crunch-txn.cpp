@@ -14,6 +14,7 @@
 crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
+  file->dataDirectory = baseDirectory + "/" + "data";
   file->transactionDirectory = transactionDirectory;
   file->schemaVersion = schemaVersion;
   file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
@@ -54,6 +55,7 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   // Create new files struct for new table
   filesForTransaction *file = new filesForTransaction{};
   file->baseDirectory = baseDirectory;
+  file->dataDirectory = baseDirectory + "/" + "data";
   file->transactionDirectory = transactionDirectory;
   file->schemaVersion = schemaVersion;
   file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
@@ -148,7 +150,7 @@ int crunchTxn::commit() {
         file->transactionDataFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDataFile.c_str()) > 0) {
-      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
+      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->dataDirectory.c_str(),
                                          file->dataExtension.c_str(),
                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME);
       res = my_rename(file->transactionDataFile.c_str(), renameFile.c_str(),  0);
@@ -169,7 +171,7 @@ int crunchTxn::commit() {
         file->transactionDeleteFileDescriptor = 0;
     }
     if (getFilesize(file->transactionDeleteFile.c_str()) > 0) {
-      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->baseDirectory.c_str(),
+      std::string renameFile = fn_format(name_buff, file->baseFileName.c_str(), file->dataDirectory.c_str(),
                                          TABLE_DELETE_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
       res = my_rename(file->transactionDeleteFile.c_str(), renameFile.c_str(), 0);
       // If rename was not successful return and rollback

@@ -240,7 +240,7 @@ int crunch::rnd_init(bool scan) {
   mysql_mutex_lock(&share->mutex);
   // Reset row number
   // Reset starting mmap position
-  int ret = findTableFiles(folderName);
+  int ret = findTableFiles(name);
   if (ret)
     DBUG_RETURN(ret);
   if (dataFiles.size() == 0) {
@@ -873,7 +873,7 @@ int crunch::consolidateFiles() {
 
 int crunch::removeOldFiles(crunchTxn *txn) {
   char name_buff[FN_REFLEN];
-  std::string consolidateDirectory = name + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
+  std::string consolidateDirectory = dataFolder + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
   createDirectory(consolidateDirectory);
   size_t to_length = 0;
   int res;
@@ -1054,10 +1054,10 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   DBUG_ASSERT(options);
 #endif
   this->mode = mode;
-  folderName = name;
   this->name = name;
+  this->dataFolder = this->name+"/data";
 
-  ret = findTableFiles(folderName);
+  ret = findTableFiles(name);
   if (ret)
     DBUG_RETURN(ret);
 
@@ -1125,10 +1125,11 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   schemaVersion = 1;
   this->name = name;
-  folderName = name;
 
   int err = 0;
   createDirectory(name);
+  dataFolder = this->name + "/data";
+  createDirectory(this->dataFolder);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
@@ -1150,7 +1151,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   my_close(create_file, MYF(0));
 
   // Create initial data file
-  if ((create_file = my_create(fn_format(name_buff, baseFilePath.c_str(), "",
+  if ((create_file = my_create(fn_format(name_buff, (dataFolder + "/" + table_arg->s->table_name.str).c_str(), "",
                                          ("." + std::to_string(schemaVersion) + TABLE_DATA_EXTENSION).c_str(),
                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME), 0,
                                O_RDWR | O_TRUNC, MYF(MY_WME))) < 0)

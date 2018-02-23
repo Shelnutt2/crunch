@@ -188,6 +188,7 @@ private:
     unsigned long dataFileIndex;
     int mode;
     std::string name;
+    std::string dataFolder;
 
     ha_table_option_struct *options;
     uint64_t schemaVersion;

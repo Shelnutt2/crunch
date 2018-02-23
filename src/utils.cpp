@@ -164,13 +164,16 @@ std::vector<std::string> readDirectory(const std::string &name)
   struct dirent * dp;
   while ((dp = readdir(dirp)) != NULL) {
     // Skip transaction directories to avoid reading those files
-    if(strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..") && strcmp(dp->d_name, TABLE_TRANSACTION_DIRECTORY)) {
+    if(strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..")
+      && strcmp(dp->d_name, TABLE_TRANSACTION_DIRECTORY)
+      && strcmp(dp->d_name, TABLE_CONSOLIDATE_DIRECTORY)) {
       // If the type is a directory we should recursively read it
       if (dp->d_type == DT_DIR) {
         std::vector<std::string> v1 = readDirectory(name + "/" + dp->d_name);
         v.insert(v.end(), v1.begin(), v1.end());
+      } else if(dp->d_type == DT_REG) {
+        v.push_back(name + "/" + dp->d_name);
       }
-      v.push_back(name + "/" + dp->d_name);
     }
   }
   closedir(dirp);
