@@ -12,7 +12,7 @@
 #include "sole.hpp"
 
 typedef struct filesForTransaction {
-    std::string baseDirectory;
+    std::string tableName;
 
     std::string transactionDirectory;
 
@@ -36,7 +36,7 @@ class crunchTxn {
 
 
 public:
-    crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+    crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     ~crunchTxn();
 
@@ -48,7 +48,7 @@ public:
 
     int rollback();
 
-    int registerNewTable(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+    int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     int getTransactionDataFileDescriptor(std::string name);
 

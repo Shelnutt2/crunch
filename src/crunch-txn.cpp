@@ -8,18 +8,20 @@
 
 /**
  * Create new transaction
- * @param baseDirectory
+ * @param name
+ * @param dataDirectory
  * @param transactionDirectory
+ * @param schemaVersion
  */
-crunchTxn::crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
+crunchTxn::crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
   filesForTransaction *file = new filesForTransaction{};
-  file->baseDirectory = baseDirectory;
-  file->dataDirectory = baseDirectory + "/" + "data";
+  file->tableName = name;
+  file->dataDirectory = dataDirectory;
   file->transactionDirectory = transactionDirectory;
   file->schemaVersion = schemaVersion;
   file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
 
-  this->tables[baseDirectory] = file;
+  this->tables[name] = file;
   this->isTxFailed = false;
   this->tablesInUse=1;
 }
@@ -41,21 +43,23 @@ crunchTxn::~crunchTxn() {
 
 /**
  * Add a new table to an existing transaction
- * @param baseDirectory
+ * @param name
+ * @param dataDirectory
  * @param transactionDirectory
+ * @param schemaVersion
  * @return
  */
-int crunchTxn::registerNewTable(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
+int crunchTxn::registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion) {
   // If table already exists don't re-register it
-  if(this->tables.find(baseDirectory) != this->tables.end()) {
+  if(this->tables.find(name) != this->tables.end()) {
     return 0;
   }
   char name_buff[FN_REFLEN];
 
   // Create new files struct for new table
   filesForTransaction *file = new filesForTransaction{};
-  file->baseDirectory = baseDirectory;
-  file->dataDirectory = baseDirectory + "/" + "data";
+  file->tableName = name;
+  file->dataDirectory = dataDirectory;
   file->transactionDirectory = transactionDirectory;
   file->schemaVersion = schemaVersion;
   file->dataExtension = ("." +std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
@@ -74,7 +78,7 @@ int crunchTxn::registerNewTable(std::string baseDirectory, std::string transacti
   file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
                                                     O_RDWR | O_TRUNC, MYF(MY_WME));
 
-  this->tables[baseDirectory] = file;
+  this->tables[name] = file;
   this->tablesInUse++;
 
   return 0;
