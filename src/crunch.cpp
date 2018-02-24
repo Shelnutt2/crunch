@@ -221,14 +221,14 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       }
     }
   } catch (kj::Exception &e) {
-    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on capnpDataToMysqlBuffer " << name << ": datafile: " << currentDataFile
+              << ", kj exception file" << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     return false;
   } catch (std::exception &e) {
-    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
-              << e.what() << std::endl;
+    std::cerr << "exception on capnpDataToMysqlBuffer " << name << ": datafile: " << currentDataFile
+              << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): " << e.what() << std::endl;
     return false;
   }
   return ret;
@@ -908,8 +908,6 @@ int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = readDirectory(folderName);
 
-  char name_buff[FN_REFLEN];
-
   int ret = 0;
 
   dataFiles.clear();
@@ -918,6 +916,13 @@ int crunch::findTableFiles(std::string folderName) {
     //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
     auto extensionIndex = it.find(".");
     if (extensionIndex != std::string::npos) {
+      // Handle "./" now that readDirectory returns the leading ./
+      if(extensionIndex == 0) {
+        auto extensionIndex2 = it.find(".", extensionIndex+1);
+        // Only override if there is more than 1 period
+        if (extensionIndex2 != std::string::npos)
+          extensionIndex = extensionIndex2;
+      }
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
       std::smatch schemaMatches, dataMatches;
@@ -927,7 +932,7 @@ int crunch::findTableFiles(std::string folderName) {
 
           bool fileExists = false;
           uint64_t schema_version = std::stoul(dataMatches[1]);
-          std::string newDataFile = folderName + "/" + it;
+          std::string newDataFile = it;
           for (auto existingFile : dataFiles) {
             if (existingFile.fileName == newDataFile)
               fileExists = true;
@@ -961,8 +966,8 @@ int crunch::findTableFiles(std::string folderName) {
           return -1013;
         };
       } else if (std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
-        std::string schemaFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
-                                           TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
+        std::string schemaFile = it;
+
         try {
           uint64_t schema_version = std::stoul(schemaMatches[1]);
           schemaFiles[schema_version] = schemaFile;
@@ -1011,8 +1016,8 @@ int crunch::findTableFiles(std::string folderName) {
       } else if (extension == TABLE_DELETE_EXTENSION) {
         //Open crunch delete
         int deleteFileDescriptor;
-        deleteFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
-                               TABLE_DELETE_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+        deleteFile = it;
+
         deleteFileDescriptor = my_open(deleteFile.c_str(), mode, 0);
         ret = readDeletesIntoMap(deleteFileDescriptor);
         if (ret)
@@ -1200,8 +1205,6 @@ int crunch::rename_table(const char *from, const char *to) {
 
   std::vector<std::string> files_in_directory = readDirectory(to);
 
-  char name_buff[FN_REFLEN];
-
   // Find all cap'n proto schemas to update
   for (auto it : files_in_directory) {
     auto extensionIndex = it.find(".");
@@ -1211,8 +1214,7 @@ int crunch::rename_table(const char *from, const char *to) {
       // Find all schema files
       if (!std::regex_match(extension, dataFileExtensionRegex) &&
           std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
-        std::string schemaFile = fn_format(name_buff, it.c_str(), to,
-                                           TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
+        std::string schemaFile = it;
         // Rename the existing file
         ret = rename(schemaFile.c_str(), (schemaFile + ".tmp").c_str());
         if (ret) {
@@ -1231,10 +1233,10 @@ int crunch::rename_table(const char *from, const char *to) {
           }
 
           std::string strTemp;
-          while (filein >> strTemp) {
+          while (std::getline(filein, strTemp)) {
             // if the line matches the old schema name remove it
-            if (strTemp == oldSchemaName) {
-              strTemp = newSchemaName;
+            if (strTemp == ("struct " + oldSchemaName + " {")) {
+              strTemp = ("struct " + newSchemaName + " {");
             }
             strTemp += "\n";
             fileout << strTemp;

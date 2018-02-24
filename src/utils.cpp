@@ -164,7 +164,7 @@ std::vector<std::string> readDirectory(const std::string &name)
   struct dirent * dp;
   while ((dp = readdir(dirp)) != NULL) {
     if(strcmp(dp->d_name, ".") && strcmp(dp->d_name, ".."))
-      v.push_back(dp->d_name);
+      v.push_back(name + "/" + dp->d_name);
   }
   closedir(dirp);
 #endif
