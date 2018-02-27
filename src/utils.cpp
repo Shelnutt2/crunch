@@ -102,7 +102,7 @@ int removeDirectory(std::string pathString) {
     r = 0;
 
     while (!r && (p=readdir(d))) {
-      int r2 = -1;
+      int r2 = -2;
       char *buf;
       size_t len;
 
@@ -119,7 +119,7 @@ int removeDirectory(std::string pathString) {
 
         snprintf(buf, len, "%s/%s", path, p->d_name);
 
-        if (!stat(buf, &statbuf)) {
+        if (!lstat(buf, &statbuf)) {
           if (S_ISDIR(statbuf.st_mode)) {
             r2 = removeDirectory(buf);
           }
