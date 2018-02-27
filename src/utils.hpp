@@ -62,4 +62,5 @@ std::vector<std::string> readDirectory(const std::string &name);
 
 int isFdValid(int fd);
 
+std::string determineSymLink(std::string file);
 #endif //CRUNCH_UTILS_HPP

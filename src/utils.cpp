@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <my_sys.h>
 #include <iostream>
+#include <limits.h>
 
 #endif
 
@@ -184,4 +185,14 @@ std::vector<std::string> readDirectory(const std::string &name)
 int isFdValid(int fd)
 {
   return fd > 0 && (fcntl(fd, F_GETFD) != -1 || errno != EBADF);
+}
+
+std::string determineSymLink(std::string file) {
+  char buff[PATH_MAX];
+  ssize_t len = ::readlink(file.c_str(), buff, sizeof(buff)-1);
+  if (len != -1) {
+    buff[len] = '\0';
+    return std::string(buff);
+  }
+  return "";
 }
