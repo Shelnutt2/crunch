@@ -422,7 +422,8 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
             }
 
             if (!rc && !capnpDataToMysqlBuffer(buf,
-                                        tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+                                               tmpDataMessageReader->getRoot<capnp::DynamicStruct>(
+                                                   capnpRowSchema.schema)))
               rc = -53;
           }
         }
@@ -818,7 +819,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
 int crunch::consolidateFiles() {
   DBUG_ENTER("crunch::consolidateFiles");
   int res = 0;
-  crunchTxn *txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion);
+  crunchTxn *txn = new crunchTxn(name, "", transactionDirectory, schemaVersion);
   int err = 0;
   try {
     rnd_init(true);
@@ -854,8 +855,19 @@ int crunch::consolidateFiles() {
     }
     res = txn->commitOrRollback();
     rnd_end();
-    if (!res)
-      removeOldFiles(txn);
+    if (!res) {
+      size_t dirlen;
+      char dirpath[FN_REFLEN];
+      std::string newDataDir = txn->getTransactiondataDirectory(name);
+      dirname_part(dirpath, newDataDir.c_str(), &dirlen);
+      std::string dataFolderActualPart = newDataDir.substr(dirlen);
+
+      my_symlink(dataFolderActualPart.c_str(), dataFolder.c_str(), MYF(0));
+
+      removeDirectory(this->dataFolderActual);
+      this->dataFolderActual = newDataDir;
+    }
+    removeOldFiles(txn);
   } catch (kj::Exception e) {
     std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
               << __LINE__ << ", exception_line: "
@@ -917,8 +929,8 @@ int crunch::findTableFiles(std::string folderName) {
     auto extensionIndex = it.find(".");
     if (extensionIndex != std::string::npos) {
       // Handle "./" now that readDirectory returns the leading ./
-      if(extensionIndex == 0) {
-        auto extensionIndex2 = it.find(".", extensionIndex+1);
+      if (extensionIndex == 0) {
+        auto extensionIndex2 = it.find(".", extensionIndex + 1);
         // Only override if there is more than 1 period
         if (extensionIndex2 != std::string::npos)
           extensionIndex = extensionIndex2;
@@ -1055,7 +1067,9 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
 #endif
   this->mode = mode;
   this->name = name;
-  this->dataFolder = this->name+"/data";
+  this->dataFolder = this->name + "/" + TABLE_DATA_DIRECTORY;
+
+  this->dataFolderActual = determineSymLink(this->dataFolder);
 
   ret = findTableFiles(name);
   if (ret)
@@ -1128,8 +1142,18 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   int err = 0;
   createDirectory(name);
-  dataFolder = this->name + "/data";
-  createDirectory(this->dataFolder);
+  dataFolder = this->name + "/" + TABLE_DATA_DIRECTORY;
+  dataFolderActual = this->name + "/data-init";
+  createDirectory(this->dataFolderActual);
+
+  size_t dirlen;
+  char dirpath[FN_REFLEN];
+  dirname_part(dirpath, this->dataFolderActual.c_str(), &dirlen);
+  std::string dataFolderActualPart = this->dataFolderActual.substr(dirlen);
+
+  err = my_symlink(dataFolderActualPart.c_str(), dataFolder.c_str(), MYF(0));
+  if (err)
+    DBUG_RETURN(err);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
@@ -1174,8 +1198,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 int crunch::delete_table(const char *name) {
   DBUG_ENTER("crunch::delete_table");
   DBUG_PRINT("info", ("Delete for table: %s", name));
-  removeDirectory(name);
-  DBUG_RETURN(0);
+  DBUG_RETURN(removeDirectory(name));
 }
 
 /**
@@ -1191,7 +1214,7 @@ int crunch::rename_table(const char *from, const char *to) {
   DBUG_PRINT("info", ("Rename table from %s to %s", from, to));
 
   // rename directory
-  int ret = rename(from, to);
+  int ret = my_rename(from, to, MYF(0));
   if (ret) {
     DBUG_PRINT("crunch::rename_table", ("Error: %s", strerror(errno)));
     std::cerr << "error in table " << name << " renaming from " << from
@@ -1210,6 +1233,13 @@ int crunch::rename_table(const char *from, const char *to) {
   for (auto it : files_in_directory) {
     auto extensionIndex = it.find(".");
     if (extensionIndex != std::string::npos) {
+      // Handle "./" now that readDirectory returns the leading ./
+      if (extensionIndex == 0) {
+        auto extensionIndex2 = it.find(".", extensionIndex + 1);
+        // Only override if there is more than 1 period
+        if (extensionIndex2 != std::string::npos)
+          extensionIndex = extensionIndex2;
+      }
       std::string extension = it.substr(extensionIndex);
       std::smatch schemaMatches;
       // Find all schema files

@@ -15,6 +15,7 @@
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
+#define TABLE_DATA_DIRECTORY "data"
 
 extern std::regex schemaFileExtensionRegex;
 extern std::regex dataFileExtensionRegex;

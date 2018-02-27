@@ -58,6 +58,8 @@ public:
 
     std::string getTransactionDeleteFile(std::string name);
 
+    std::string getTransactiondataDirectory(std::string name);
+
     enum_tx_isolation tx_isolation;
 
     bool isTxFailed;

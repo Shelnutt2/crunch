@@ -189,6 +189,7 @@ private:
     int mode;
     std::string name;
     std::string dataFolder;
+    std::string dataFolderActual;
 
     ha_table_option_struct *options;
     uint64_t schemaVersion;
