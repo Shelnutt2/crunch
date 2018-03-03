@@ -6,42 +6,9 @@ language: cpp
 git:
   depth: 10
 
-addons:
-  apt:
-    sources:
-      - ubuntu-toolchain-r-test
-    packages:
-      - gcc-5
-      - g++-5
-      - gdb
-      - lcov
-      - cmake
-      - cmake-data
-      - ninja-build
-
-# before_install runs after matrix.addons.apt installation targets in the matrix
-before_install:
-  - export CTEST_OUTPUT_ON_FAILURE=1
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-5 50; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config gcc; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config g++; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo update-alternatives --config gcov; fi
-  - if [[ -x "${TRAVIS_BUILD_DIR}/ci/build_capnp.sh" ]]; then source ${TRAVIS_BUILD_DIR}/ci/build_capnp.sh; fi
-
+services:
+  - docker
 
 # Build steps
 script:
-  - mkdir tmp
-  - mv !(tmp) tmp # Move everything but tmp
-  #- git clone https://github.com/MariaDB/server.git -b mariadb-10.2.10
-  - wget https://downloads.mariadb.org/interstitial/mariadb-10.2.10/source/mariadb-10.2.10.tar.gz
-  - tar xf mariadb-10.2.10.tar.gz
-  - mv tmp mariadb-10.2.10/storage/crunch
-  - cd mariadb-10.2.10
-  - mkdir build
-  - cd build
-  - cmake -GNinja -DPLUGIN_TOKUDB=NO -DPLUGIN_ROCKSDB=NO -DPLUGIN_MROONGA=NO -DPLUGIN_SPIDER=NO -DPLUGIN_SPHINX=NO -DPLUGIN_FEDERATED=NO -DPLUGIN_FEDERATEDX=NO -DPLUGIN_CONNECT=NO -DCMAKE_BUILD_TYPE=Debug ..
-  - ninja
-  - if ! ./mysql-test/mysql-test-run.pl  --suite=crunch --debug; then cat ./mysql-test/var/log/mysqld.1.err && false; fi;
+  - docker run --rm -t -v $PWD:/opt/server registry.gitlab.com/shelnutt2/mariadb-build-deps/crunch /opt/server/ci/ci_tests.sh

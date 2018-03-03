@@ -1,11 +1,17 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 2.8)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(CRUNCH_COMPILE_STANDALONE "Enables building crunch storage engine outside of mariadb build tree" OFF)
 
 project(crunch)
 
-set(CMAKE_CXX_STANDARD 14)
+if (CMAKE_VERSION VERSION_LESS "3.1")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++14")
+    endif ()
+else ()
+    set (CMAKE_CXX_STANDARD 14)
+endif ()
 
 file(GLOB SOURCE_FILES src/*.cpp crunchdelete.capnp.c++)
 
