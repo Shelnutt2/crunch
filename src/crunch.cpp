@@ -463,6 +463,12 @@ int crunch::rnd_end() {
 void crunch::build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls) {
   // Loop through each field to write row
 
+
+  //If we have an auto increment field, need to get the value
+  if (table->next_number_field) {
+    update_auto_increment();
+  }
+
   int index = 0;
   for (Field **field = table->field; *field; field++) {
     std::string capnpFieldName = camelCase((*field)->field_name);

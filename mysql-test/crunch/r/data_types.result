@@ -349,3 +349,15 @@ column1
 1
 65535
 DROP TABLE t1;
+# INTEGER Auto Increment
+CREATE TABLE t1 (
+column1 integer AUTO_INCREMENT,
+column2 integer
+) ENGINE=crunch;
+INSERT INTO t1(column2) VALUES (1);
+INSERT INTO t1(column2) VALUES (1);
+select * FROM t1 ORDER BY column1 ASC;
+column1 column2
+1 1
+2 1
+DROP TABLE t1;
