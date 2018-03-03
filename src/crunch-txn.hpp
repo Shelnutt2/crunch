@@ -12,7 +12,7 @@
 #include "sole.hpp"
 
 typedef struct filesForTransaction {
-    std::string baseDirectory;
+    std::string tableName;
 
     std::string transactionDirectory;
 
@@ -29,13 +29,14 @@ typedef struct filesForTransaction {
     uint64_t schemaVersion;
 
     std::string dataExtension;
+    std::string dataDirectory;
 } filesForTransaction;
 
 class crunchTxn {
 
 
 public:
-    crunchTxn(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+    crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     ~crunchTxn();
 
@@ -47,7 +48,7 @@ public:
 
     int rollback();
 
-    int registerNewTable(std::string baseDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+    int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
 
     int getTransactionDataFileDescriptor(std::string name);
 
@@ -56,6 +57,8 @@ public:
     std::string getTransactionDataFile(std::string name);
 
     std::string getTransactionDeleteFile(std::string name);
+
+    std::string getTransactiondataDirectory(std::string name);
 
     enum_tx_isolation tx_isolation;
 

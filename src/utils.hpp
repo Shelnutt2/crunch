@@ -15,6 +15,7 @@
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
+#define TABLE_DATA_DIRECTORY "data"
 
 extern std::regex schemaFileExtensionRegex;
 extern std::regex dataFileExtensionRegex;
@@ -62,4 +63,5 @@ std::vector<std::string> readDirectory(const std::string &name);
 
 int isFdValid(int fd);
 
+std::string determineSymLink(std::string file);
 #endif //CRUNCH_UTILS_HPP

@@ -221,14 +221,14 @@ bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dyn
       }
     }
   } catch (kj::Exception &e) {
-    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on capnpDataToMysqlBuffer " << name << ": datafile: " << currentDataFile
+              << ", kj exception file" << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     return false;
   } catch (std::exception &e) {
-    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
-              << e.what() << std::endl;
+    std::cerr << "exception on capnpDataToMysqlBuffer " << name << ": datafile: " << currentDataFile
+              << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): " << e.what() << std::endl;
     return false;
   }
   return ret;
@@ -240,7 +240,7 @@ int crunch::rnd_init(bool scan) {
   mysql_mutex_lock(&share->mutex);
   // Reset row number
   // Reset starting mmap position
-  int ret = findTableFiles(folderName);
+  int ret = findTableFiles(name);
   if (ret)
     DBUG_RETURN(ret);
   if (dataFiles.size() == 0) {
@@ -422,7 +422,8 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
             }
 
             if (!rc && !capnpDataToMysqlBuffer(buf,
-                                        tmpDataMessageReader->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+                                               tmpDataMessageReader->getRoot<capnp::DynamicStruct>(
+                                                   capnpRowSchema.schema)))
               rc = -53;
           }
         }
@@ -701,7 +702,7 @@ int crunch::start_stmt(THD *thd, thr_lock_type lock_type) {
 
   crunchTxn *txn = (crunchTxn *) thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn = new crunchTxn(name, transactionDirectory, schemaVersion);
+    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
@@ -710,7 +711,7 @@ int crunch::start_stmt(THD *thd, thr_lock_type lock_type) {
     //txn->stmt= txn->new_savepoint();
     trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
   } else if (txn->inProgress) {
-    txn->registerNewTable(name, transactionDirectory, schemaVersion);
+    txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion);
   }
   DBUG_RETURN(ret);
 }
@@ -769,7 +770,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
   int rc = 0;
   crunchTxn *txn = (crunchTxn *) thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn = new crunchTxn(name, transactionDirectory, schemaVersion);
+    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
@@ -786,7 +787,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
       trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
     } else if (txn->inProgress) {
       DBUG_PRINT("debug", ("Using existing transaction %s", txn->uuid.str().c_str()));
-      txn->registerNewTable(name, transactionDirectory, schemaVersion);
+      txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion);
     }
   } else {
     if (txn->inProgress) {
@@ -818,7 +819,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
 int crunch::consolidateFiles() {
   DBUG_ENTER("crunch::consolidateFiles");
   int res = 0;
-  crunchTxn *txn = new crunchTxn(name, transactionDirectory, schemaVersion);
+  crunchTxn *txn = new crunchTxn(name, "", transactionDirectory, schemaVersion);
   int err = 0;
   try {
     rnd_init(true);
@@ -854,8 +855,19 @@ int crunch::consolidateFiles() {
     }
     res = txn->commitOrRollback();
     rnd_end();
-    if (!res)
-      removeOldFiles(txn);
+    if (!res) {
+      size_t dirlen;
+      char dirpath[FN_REFLEN];
+      std::string newDataDir = txn->getTransactiondataDirectory(name);
+      dirname_part(dirpath, newDataDir.c_str(), &dirlen);
+      std::string dataFolderActualPart = newDataDir.substr(dirlen);
+
+      my_symlink(dataFolderActualPart.c_str(), dataFolder.c_str(), MYF(0));
+
+      removeDirectory(this->dataFolderActual);
+      this->dataFolderActual = newDataDir;
+    }
+    removeOldFiles(txn);
   } catch (kj::Exception e) {
     std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
               << __LINE__ << ", exception_line: "
@@ -873,7 +885,7 @@ int crunch::consolidateFiles() {
 
 int crunch::removeOldFiles(crunchTxn *txn) {
   char name_buff[FN_REFLEN];
-  std::string consolidateDirectory = name + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
+  std::string consolidateDirectory = dataFolder + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
   createDirectory(consolidateDirectory);
   size_t to_length = 0;
   int res;
@@ -908,8 +920,6 @@ int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = readDirectory(folderName);
 
-  char name_buff[FN_REFLEN];
-
   int ret = 0;
 
   dataFiles.clear();
@@ -918,6 +928,13 @@ int crunch::findTableFiles(std::string folderName) {
     //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
     auto extensionIndex = it.find(".");
     if (extensionIndex != std::string::npos) {
+      // Handle "./" now that readDirectory returns the leading ./
+      if (extensionIndex == 0) {
+        auto extensionIndex2 = it.find(".", extensionIndex + 1);
+        // Only override if there is more than 1 period
+        if (extensionIndex2 != std::string::npos)
+          extensionIndex = extensionIndex2;
+      }
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
       std::smatch schemaMatches, dataMatches;
@@ -927,7 +944,7 @@ int crunch::findTableFiles(std::string folderName) {
 
           bool fileExists = false;
           uint64_t schema_version = std::stoul(dataMatches[1]);
-          std::string newDataFile = folderName + "/" + it;
+          std::string newDataFile = it;
           for (auto existingFile : dataFiles) {
             if (existingFile.fileName == newDataFile)
               fileExists = true;
@@ -961,8 +978,8 @@ int crunch::findTableFiles(std::string folderName) {
           return -1013;
         };
       } else if (std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
-        std::string schemaFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
-                                           TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
+        std::string schemaFile = it;
+
         try {
           uint64_t schema_version = std::stoul(schemaMatches[1]);
           schemaFiles[schema_version] = schemaFile;
@@ -1011,8 +1028,8 @@ int crunch::findTableFiles(std::string folderName) {
       } else if (extension == TABLE_DELETE_EXTENSION) {
         //Open crunch delete
         int deleteFileDescriptor;
-        deleteFile = fn_format(name_buff, it.c_str(), folderName.c_str(),
-                               TABLE_DELETE_EXTENSION, MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+        deleteFile = it;
+
         deleteFileDescriptor = my_open(deleteFile.c_str(), mode, 0);
         ret = readDeletesIntoMap(deleteFileDescriptor);
         if (ret)
@@ -1049,10 +1066,12 @@ int crunch::open(const char *name, int mode, uint test_if_locked) {
   DBUG_ASSERT(options);
 #endif
   this->mode = mode;
-  folderName = name;
   this->name = name;
+  this->dataFolder = this->name + "/" + TABLE_DATA_DIRECTORY;
 
-  ret = findTableFiles(folderName);
+  this->dataFolderActual = determineSymLink(this->dataFolder);
+
+  ret = findTableFiles(name);
   if (ret)
     DBUG_RETURN(ret);
 
@@ -1120,10 +1139,21 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   schemaVersion = 1;
   this->name = name;
-  folderName = name;
 
   int err = 0;
   createDirectory(name);
+  dataFolder = this->name + "/" + TABLE_DATA_DIRECTORY;
+  dataFolderActual = this->name + "/data-init";
+  createDirectory(this->dataFolderActual);
+
+  size_t dirlen;
+  char dirpath[FN_REFLEN];
+  dirname_part(dirpath, this->dataFolderActual.c_str(), &dirlen);
+  std::string dataFolderActualPart = this->dataFolderActual.substr(dirlen);
+
+  err = my_symlink(dataFolderActualPart.c_str(), dataFolder.c_str(), MYF(0));
+  if (err)
+    DBUG_RETURN(err);
   transactionDirectory = name + std::string("/") + TABLE_TRANSACTION_DIRECTORY;
   createDirectory(transactionDirectory);
   // Build capnp proto schema
@@ -1145,7 +1175,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   my_close(create_file, MYF(0));
 
   // Create initial data file
-  if ((create_file = my_create(fn_format(name_buff, baseFilePath.c_str(), "",
+  if ((create_file = my_create(fn_format(name_buff, (dataFolder + "/" + table_arg->s->table_name.str).c_str(), "",
                                          ("." + std::to_string(schemaVersion) + TABLE_DATA_EXTENSION).c_str(),
                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME), 0,
                                O_RDWR | O_TRUNC, MYF(MY_WME))) < 0)
@@ -1168,8 +1198,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 int crunch::delete_table(const char *name) {
   DBUG_ENTER("crunch::delete_table");
   DBUG_PRINT("info", ("Delete for table: %s", name));
-  removeDirectory(name);
-  DBUG_RETURN(0);
+  DBUG_RETURN(removeDirectory(name));
 }
 
 /**
@@ -1185,7 +1214,7 @@ int crunch::rename_table(const char *from, const char *to) {
   DBUG_PRINT("info", ("Rename table from %s to %s", from, to));
 
   // rename directory
-  int ret = rename(from, to);
+  int ret = my_rename(from, to, MYF(0));
   if (ret) {
     DBUG_PRINT("crunch::rename_table", ("Error: %s", strerror(errno)));
     std::cerr << "error in table " << name << " renaming from " << from
@@ -1200,19 +1229,23 @@ int crunch::rename_table(const char *from, const char *to) {
 
   std::vector<std::string> files_in_directory = readDirectory(to);
 
-  char name_buff[FN_REFLEN];
-
   // Find all cap'n proto schemas to update
   for (auto it : files_in_directory) {
     auto extensionIndex = it.find(".");
     if (extensionIndex != std::string::npos) {
+      // Handle "./" now that readDirectory returns the leading ./
+      if (extensionIndex == 0) {
+        auto extensionIndex2 = it.find(".", extensionIndex + 1);
+        // Only override if there is more than 1 period
+        if (extensionIndex2 != std::string::npos)
+          extensionIndex = extensionIndex2;
+      }
       std::string extension = it.substr(extensionIndex);
       std::smatch schemaMatches;
       // Find all schema files
       if (!std::regex_match(extension, dataFileExtensionRegex) &&
           std::regex_search(extension, schemaMatches, schemaFileExtensionRegex)) {
-        std::string schemaFile = fn_format(name_buff, it.c_str(), to,
-                                           TABLE_SCHEME_EXTENSION, MY_UNPACK_FILENAME);
+        std::string schemaFile = it;
         // Rename the existing file
         ret = rename(schemaFile.c_str(), (schemaFile + ".tmp").c_str());
         if (ret) {
@@ -1231,10 +1264,10 @@ int crunch::rename_table(const char *from, const char *to) {
           }
 
           std::string strTemp;
-          while (filein >> strTemp) {
+          while (std::getline(filein, strTemp)) {
             // if the line matches the old schema name remove it
-            if (strTemp == oldSchemaName) {
-              strTemp = newSchemaName;
+            if (strTemp == ("struct " + oldSchemaName + " {")) {
+              strTemp = ("struct " + newSchemaName + " {");
             }
             strTemp += "\n";
             fileout << strTemp;
