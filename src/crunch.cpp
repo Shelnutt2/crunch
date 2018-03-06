@@ -144,7 +144,7 @@ bool crunch::mremapData(std::string fileName) {
   }
   DBUG_RETURN(true);
 #else
-  if (dataFileSize>0 && dataFileStart != NULL && munmap((void*)dataFileStart, dataFileSize) == -1) {
+  if (dataFileSize > 0 && dataFileStart != NULL && munmap((void *) dataFileStart, dataFileSize) == -1) {
     perror("Error un-mmapping the file");
     DBUG_PRINT("crunch::mremapData", ("Error: %s", strerror(errno)));
     DBUG_RETURN(false);
@@ -343,7 +343,8 @@ int crunch::rnd_next(uchar *buf) {
       }
     }
   } catch (kj::Exception &e) {
-    std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+    std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+              << __LINE__
               << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
@@ -395,8 +396,9 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
     }
     dataPointer = dataFileStart + rowLocation.getRowStartLocation();
     if (!checkForDeletedRow(rowLocation.getFileName().cStr(), rowLocation.getRowStartLocation())) {
-      auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(new capnp::FlatArrayMessageReader(
-          kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
+      auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(
+          new capnp::FlatArrayMessageReader(
+              kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
       try {
         if (!rc) {
           if (tmpDataMessageReader == nullptr) {
@@ -405,13 +407,15 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
             uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
             if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
               schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
-              for (auto schemaIt = capnpRowSchemas.rbegin(); schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
+              for (auto schemaIt = capnpRowSchemas.rbegin();
+                   schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
                 if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
                   maxCompatibleSchema = schemaIt->second;
                   break;
                 }
               }
-              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader), maxCompatibleSchema,
+              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader),
+                                                      maxCompatibleSchema,
                                                       capnpRowSchema);
               if (newMessage == nullptr)
                 rc = -52;
@@ -435,7 +439,8 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
                   << ", e.what(): " << e.getDescription().cStr() << std::endl;
         rc = -54;
       } catch (std::exception &e) {
-        std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+        std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__
+                  << ", e.what(): "
                   << e.what() << std::endl;
         rc = -55;
       }
@@ -531,7 +536,8 @@ void crunch::build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::B
                            &my_charset_bin);
           (*field)->val_str(&attribute, &attribute);
 
-          kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(), attribute.length()).asBytes();
+          kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(),
+                                                          attribute.length()).asBytes();
           capnp::Data::Reader data(bufferPtr.begin(), bufferPtr.size());
           row->set(capnpFieldName, data);
           break;
@@ -848,7 +854,8 @@ int crunch::consolidateFiles() {
          */
         message = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
       } else {
-        capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema);
+        capnp::DynamicStruct::Reader messageRoot = rowRead->getRoot<capnp::DynamicStruct>(
+            capnpRowSchema.schema);
         message->setRoot(messageRoot);
       }
       write_message(std::move(message), txn);
@@ -862,12 +869,19 @@ int crunch::consolidateFiles() {
       dirname_part(dirpath, newDataDir.c_str(), &dirlen);
       std::string dataFolderActualPart = newDataDir.substr(dirlen);
 
-      my_symlink(dataFolderActualPart.c_str(), dataFolder.c_str(), MYF(0));
-
-      removeDirectory(this->dataFolderActual);
-      this->dataFolderActual = newDataDir;
+      res = my_symlink(dataFolderActualPart.c_str(), (dataFolder + "-tmp").c_str(), MYF(0));
+      if (!res) {
+        res = my_rename((dataFolder + "-tmp").c_str(), dataFolder.c_str(), MYF(0));
+        if (!res) {
+          res = removeDirectory(this->name + "/" + this->dataFolderActual);
+          this->dataFolderActual = newDataDir;
+        } else {
+          perror("Error in rename");
+        }
+      } else {
+        perror("Error in symlinking");
+      }
     }
-    removeOldFiles(txn);
   } catch (kj::Exception e) {
     std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
               << __LINE__ << ", exception_line: "
@@ -881,39 +895,6 @@ int crunch::consolidateFiles() {
   }
   delete txn;
   DBUG_RETURN(res);
-}
-
-int crunch::removeOldFiles(crunchTxn *txn) {
-  char name_buff[FN_REFLEN];
-  std::string consolidateDirectory = dataFolder + std::string("/") + TABLE_CONSOLIDATE_DIRECTORY;
-  createDirectory(consolidateDirectory);
-  size_t to_length = 0;
-  int res;
-  for (auto oldFile : dataFiles) {
-    if (oldFile.fileName == txn->getTransactionDataFile(name)) {
-      continue;
-    }
-    dirname_part(name_buff, oldFile.fileName.c_str(), &to_length);
-    std::string currentFileDirectory = name_buff;
-    auto posFound = oldFile.fileName.find(currentFileDirectory);
-    if (posFound != std::string::npos) {
-      std::string fileName = oldFile.fileName.substr(+currentFileDirectory.length());
-      std::string consolidateDirectory = currentFileDirectory + TABLE_CONSOLIDATE_DIRECTORY;
-
-      std::string renameFile = fn_format(name_buff, fileName.c_str(), consolidateDirectory.c_str(),
-                                         TABLE_DATA_EXTENSION, MY_UNPACK_FILENAME);
-      res = my_rename(oldFile.fileName.c_str(), renameFile.c_str(), 0);
-      // If rename was not successful return and rollback
-    } else {
-      std::cerr << "Could not properly split folder and filename for " << oldFile.fileName << std::endl;
-      res = -112;
-    }
-    if (res)
-      return res;
-  }
-  removeDirectory(consolidateDirectory);
-  res = findTableFiles(name);
-  return res;
 }
 
 int crunch::findTableFiles(std::string folderName) {
@@ -954,7 +935,8 @@ int crunch::findTableFiles(std::string folderName) {
             dataFiles.push_back(dataStruct);
           }
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+                    << __LINE__
                     << ", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
@@ -996,12 +978,14 @@ int crunch::findTableFiles(std::string folderName) {
           std::string structName = parseFileNameForStructName(name);
           // Get the nested structure from file, for now there is only a single struct in the schema files
 
-          capnpRowSchema = {capnpParsedSchema.getNested(structName).asStruct(), minimumCompatibleSchemaVersion,
+          capnpRowSchema = {capnpParsedSchema.getNested(structName).asStruct(),
+                            minimumCompatibleSchemaVersion,
                             schema_version};
 
           capnpRowSchemas[schema_version] = capnpRowSchema;
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+                    << __LINE__
                     << ", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
@@ -1276,7 +1260,8 @@ int crunch::rename_table(const char *from, const char *to) {
           my_delete((schemaFile + ".tmp").c_str(), 0);
 
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+                    << __LINE__
                     << ", exception_line: "
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;

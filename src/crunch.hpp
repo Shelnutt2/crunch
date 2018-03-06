@@ -150,7 +150,6 @@ private:
     bool mremapData(std::string fileName);
     bool unmmapData();
     int findTableFiles(std::string folderName);
-    int removeOldFiles(crunchTxn *txn);
     int consolidateFiles();
 
     THR_LOCK_DATA lock;      ///< MySQL lock
