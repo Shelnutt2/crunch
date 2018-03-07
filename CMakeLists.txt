@@ -47,5 +47,5 @@ ENDIF()
 
 
 find_package(CapnProto REQUIRED)
-include_directories(${CAPNP_INCLUDE_DIRS})
+include_directories(${CAPNP_INCLUDE_DIRS} "lib/cpp-btree-1.0.1")
 target_link_libraries(crunch ${CAPNP_LIBRARIES})
