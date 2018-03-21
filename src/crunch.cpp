@@ -329,30 +329,47 @@ int crunch::rnd_next(uchar *buf) {
               break;
             }
           }
-          auto newMessage = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
-          if (newMessage == nullptr)
-            rc = -42;
-          else
-            rowRead = std::make_unique<capnp::FlatArrayMessageReader>(
-                capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
+          try {
+            std::cerr << "Updating " << currentDataFile << " from schema " << dataFiles[dataFileIndex].schemaVersion
+                      << " to " << capnpRowSchema.schemaVersion << std::endl;
+            auto newMessage = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
+            if (newMessage == nullptr)
+              rc = -42;
+            else
+              rowRead = std::make_unique<capnp::FlatArrayMessageReader>(
+                  capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
 
-        }
+          } catch (kj::Exception &e) {
+            std::cerr << "exception on rnd_next " << name << ": schemaVersion=" << capnpRowSchema.schemaVersion
+                      << ", dataFile=" << currentDataFile << ", file version=" << dataFiles[dataFileIndex].schemaVersion
+                      << ", row_start_location: " << (dataPointer - dataFileStart)
+                      << ", line: " << __FILE__ << ":" << __LINE__
+                      << ", error line" << e.getFile() << ":" << e.getLine() << ", type: " << (int) e.getType()
+                      << ", e.what(): " << e.getDescription().cStr() << std::endl;
+            rc = -43;
+          } catch (std::exception &e) {
+            std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
+                      << e.what() << std::endl;
+            rc = -44;
+          }
+      }
 
         if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
-          rc = -43;
+          rc = -45;
       }
     }
   } catch (kj::Exception &e) {
-    std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
-              << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on rnd_next " << name << ": schemaVersion=" << capnpRowSchema.schemaVersion
+              << ", dataFile=" << currentDataFile << ", file version=" << dataFiles[dataFileIndex].schemaVersion
+              << ", row_start_location: " << (dataPointer - dataFileStart)
+              << ", line: " << __FILE__ << ":" << __LINE__
+              << ", error line" << e.getFile() << ":" << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
-    rc = -44;
+    rc = -46;
   } catch (std::exception &e) {
     std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
               << e.what() << std::endl;
-    rc = -45;
+    rc = -47;
   }
 
   // Reset bitmap to original
