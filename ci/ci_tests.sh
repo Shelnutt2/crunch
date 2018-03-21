@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+set -e -x
 mkdir tmp
 shopt -s extglob
 mv !(tmp) tmp # Move everything but tmp
@@ -12,3 +13,4 @@ wget https://downloads.mariadb.org/interstitial/mariadb-10.2.10/source/mariadb-1
 && cmake -GNinja -DPLUGIN_TOKUDB=NO -DPLUGIN_ROCKSDB=NO -DPLUGIN_MROONGA=NO -DPLUGIN_SPIDER=NO -DPLUGIN_SPHINX=NO -DPLUGIN_FEDERATED=NO -DPLUGIN_FEDERATEDX=NO -DPLUGIN_CONNECT=NO -DCMAKE_BUILD_TYPE=Debug .. \
 && ninja \
 && if ! ./mysql-test/mysql-test-run.pl  --suite=crunch --debug; then cat ./mysql-test/var/log/mysqld.1.err && false; fi;
+set +e +x
