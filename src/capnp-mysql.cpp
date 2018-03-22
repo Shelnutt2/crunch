@@ -216,9 +216,14 @@ updateMessageToSchema(std::unique_ptr<capnp::FlatArrayMessageReader> message, sc
     const capnp::StructSchema::FieldList &oldSchemaFields = oldSchema.schema.getFields();
     const capnp::StructSchema::FieldList &newSchemaFields = newSchema.schema.getFields();
 
+    std::cerr << "Found oldSchemaFields.size(): " << oldSchemaFields.size()
+              << " vs newSchemaFields.size(): " << newSchemaFields.size() << std::endl;
+
     // Use stored structure
     capnp::DynamicStruct::Builder rowBuilder = tableRow->initRoot<capnp::DynamicStruct>(newSchema.schema);
 
+    std::cerr << "std::max(oldSchemaFields.size(), newSchemaFields.size()) = "
+              << std::max(oldSchemaFields.size(), newSchemaFields.size()) << std::endl;
     capnp::DynamicList::Builder nulls = rowBuilder.init(NULL_COLUMN_FIELD,
                                                         std::max(oldSchemaFields.size(), newSchemaFields.size()) -
                                                         NON_MYSQL_FIELD_COUNT).as<capnp::DynamicList>();

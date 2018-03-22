@@ -330,14 +330,17 @@ int crunch::rnd_next(uchar *buf) {
             }
           }
           try {
-            std::cerr << "Updating " << currentDataFile << " from schema " << dataFiles[dataFileIndex].schemaVersion
+            std::cerr << "Updating " << currentDataFile << ":" << (dataPointer - dataFileStart)
+                      << " from schema " << dataFiles[dataFileIndex].schemaVersion
                       << " to " << capnpRowSchema.schemaVersion << std::endl;
             auto newMessage = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
             if (newMessage == nullptr)
               rc = -42;
-            else
+            else {
+              rowRead.reset();
               rowRead = std::make_unique<capnp::FlatArrayMessageReader>(
                   capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
+            }
 
           } catch (kj::Exception &e) {
             std::cerr << "exception on rnd_next " << name << ": schemaVersion=" << capnpRowSchema.schemaVersion
@@ -352,10 +355,11 @@ int crunch::rnd_next(uchar *buf) {
                       << e.what() << std::endl;
             rc = -44;
           }
-      }
-
-        if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+        }
+        if(rowRead == nullptr)
           rc = -45;
+        else if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+          rc = -46;
       }
     }
   } catch (kj::Exception &e) {
@@ -365,11 +369,11 @@ int crunch::rnd_next(uchar *buf) {
               << ", line: " << __FILE__ << ":" << __LINE__
               << ", error line" << e.getFile() << ":" << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
-    rc = -46;
+    rc = -47;
   } catch (std::exception &e) {
     std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__ << ", e.what(): "
               << e.what() << std::endl;
-    rc = -47;
+    rc = -48;
   }
 
   // Reset bitmap to original
