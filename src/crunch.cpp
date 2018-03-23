@@ -1309,6 +1309,16 @@ int crunch::rename_table(const char *from, const char *to) {
   DBUG_RETURN(ret);
 }
 
+/**
+ * Optimize Table
+ * @param thd unused
+ * @param check_opt unused
+ * @return status of consolidation
+ */
+int crunch::optimize(THD* thd, HA_CHECK_OPT* check_opt) {
+  DBUG_ENTER("crunch::optimize");
+  DBUG_RETURN(consolidateFiles());
+}
 
 /**
  *

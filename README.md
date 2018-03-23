@@ -126,6 +126,8 @@ has been implemented. Currently this only acts on table close.
 The long term goal is to implement a daemon plugin which will implement
 consolidation in the background independent of the mysql server. See #44.
 
+Consolidation can also be manually forced by running `OPTIMIZE TABLE tbl_name`
+
 ## System and Table Variables
 
 Below are a list of server and table configuration variables.
