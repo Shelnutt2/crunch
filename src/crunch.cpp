@@ -314,7 +314,26 @@ int crunch::rnd_next(uchar *buf) {
   // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
   my_bitmap_map *orig = dbug_tmp_use_all_columns(table, table->write_set);
 
-  try {
+  #include <sys/resource.h>
+  const rlim_t kStackSize = 16 * 1024 * 1024;   // min stack size = 16 MB
+  struct rlimit rl;
+  int result;
+
+  result = getrlimit(RLIMIT_STACK, &rl);
+  if (result == 0) {
+    fprintf(stderr, "Current RLIMIT_STACK=%lu\n", rl.rlim_cur);
+
+    if (rl.rlim_cur < kStackSize) {
+      rl.rlim_cur = kStackSize;
+      result = setrlimit(RLIMIT_STACK, &rl);
+      if (result != 0) {
+        fprintf(stderr, "setrlimit=%lu returned result = %d\n", rl.rlim_cur, result);
+      }
+    }
+  }
+
+
+    try {
     std::unique_ptr<capnp::FlatArrayMessageReader> rowRead = rnd_row(&rc);
     if (!rc) {
       if (rowRead == nullptr) {
