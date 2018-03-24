@@ -330,8 +330,6 @@ int crunch::rnd_next(uchar *buf) {
             }
           }
           try {
-            std::cerr << "Updating " << currentDataFile << " from schema " << dataFiles[dataFileIndex].schemaVersion
-                      << " to " << capnpRowSchema.schemaVersion << std::endl;
             auto newMessage = updateMessageToSchema(std::move(rowRead), maxCompatibleSchema, capnpRowSchema);
             if (newMessage == nullptr)
               rc = -42;
