@@ -99,6 +99,9 @@ class crunch : public handler {
     int start_stmt(THD *thd, thr_lock_type lock_type);
     static int disconnect(handlerton *hton, MYSQL_THD thd);
 
+    // Optimize Table
+    int optimize(THD* thd, HA_CHECK_OPT* check_opt);
+
 
     /* START INPLACE ALTER TABLE SUPPORT */
     enum_alter_inplace_result check_if_supported_inplace_alter(TABLE *altered_table, Alter_inplace_info *ha_alter_info);
