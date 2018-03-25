@@ -14,6 +14,7 @@
 #define TABLE_DATA_EXTENSION ".capnpd"
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 #define TABLE_SCHEME_EXTENSION ".capnp"
+#define TABLE_INDEX_SCHEME_EXTENSION ".index.capnp"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
 #define TABLE_DATA_DIRECTORY "data"
 

@@ -54,6 +54,8 @@ std::string
 buildCapnpLimitedSchema(std::vector<Field*> fields, std::string structName, int *err, uint64_t id, uint64_t schemaVersion,
                         uint64_t minimumCompatibleSchemaVersion);
 
+std::string buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t id);
+
 std::string getCapnpTypeFromField(Field *field);
 
 bool checkIfMysqlColumnTypeCapnpCompatible(Field *field1, Field *field2);

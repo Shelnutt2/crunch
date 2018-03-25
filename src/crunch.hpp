@@ -112,6 +112,10 @@ class crunch : public handler {
     void notify_table_changed();
     /* END INPLACE ALTER TABLE SUPPORT*/
 
+    /* START INDEX SUPPORT */
+   int createIndexesFromTable(TABLE *table_arg);
+    /* END INDEX SUPPORT */
+
 private:
 
     bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);

@@ -1190,8 +1190,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   my_close(create_file, MYF(0));
 
-
-  DBUG_RETURN(0);
+  DBUG_RETURN(createIndexesFromTable(table_arg));
 }
 
 int crunch::delete_table(const char *name) {

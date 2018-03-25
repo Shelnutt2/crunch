@@ -189,6 +189,44 @@ buildCapnpLimitedSchema(std::vector<Field *> fields, std::string structName, int
   return output;
 }
 
+/** Built a string of a cap'n proto structure from mysql fields list
+ *
+ * @param KEY struct
+ * @param structName
+ * @param err
+ * @param id
+ * @return index Schema
+ */
+std::string
+buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t id) {
+
+  if (id == 0) {
+    id = generateRandomId();
+  }
+
+  if (structName.empty()) {
+    structName = key_info->name;
+    structName.resize(std::remove_if(structName.begin(), structName.end(), [](char x) { return !isalnum(x); }) - structName.begin());
+    // Cap'n Proto schema's require the first character to be upper case for struct names
+    structName[0] = toupper(structName[0]);
+  }
+  std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
+  output += "struct " + structName + " {\n";
+
+  for(uint i = 0; i < key_info->user_defined_key_parts; i++) {
+    Field *field = key_info->key_part[i].field;
+    output +=
+        "  " + camelCase(field->field_name) + " @" + std::to_string(field->field_index) +
+        " :" +
+        getCapnpTypeFromField(field) + ";\n";
+
+  }
+
+  output += "}";
+
+  return output;
+}
+
 std::string camelCase(std::string mysqlString) {
   std::string camelString = mysqlString;
   for (uint i = 0; i < camelString.length(); i++) {
