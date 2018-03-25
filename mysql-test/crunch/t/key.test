@@ -1,0 +1,12 @@
+--echo #Primary Key Support Test
+CREATE TABLE t1 (
+  column1 integer,
+  column2 varchar(255),
+  primary key(column1)
+) ENGINE=crunch;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g='), (2,'dmFsdWUy'), (3,'dmFsdWU');
+select column1, column2 from t1;
+--error ER_DUP_ENTRY
+INSERT INTO t1 VALUES (1, 'test_reject');
+DROP TABLE t1;
+
