@@ -113,7 +113,18 @@ class crunch : public handler {
     /* END INPLACE ALTER TABLE SUPPORT*/
 
     /* START INDEX SUPPORT */
-   int createIndexesFromTable(TABLE *table_arg);
+    int createIndexesFromTable(TABLE *table_arg);
+    uint max_supported_keys() const override {
+      DBUG_ENTER("crunch::max_supported_keys");
+
+      DBUG_RETURN(MAX_INDEXES);
+    }
+
+    uint max_supported_key_parts() const override {
+      DBUG_ENTER("crunch::max_supported_key_parts");
+
+      DBUG_RETURN(MAX_REF_PARTS);
+    }
     /* END INDEX SUPPORT */
 
 private:
