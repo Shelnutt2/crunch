@@ -1,0 +1,16 @@
+--echo #
+--echo # The purpose of this test is to test optimize table
+--echo #
+--echo # INTEGER
+
+CREATE TABLE t1 (
+  column1 integer,
+  column2 BLOB
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+INSERT INTO t1 VALUES (3,'dmFsdWUy');
+INSERT INTO t1 VALUES (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+OPTIMIZE TABLE t1;
+select column2 FROM t1 ORDER BY column1;
+DROP TABLE t1;

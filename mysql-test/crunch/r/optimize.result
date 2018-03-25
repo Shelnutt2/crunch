@@ -1,0 +1,25 @@
+#
+# The purpose of this test is to test optimize table
+#
+# INTEGER
+CREATE TABLE t1 (
+column1 integer,
+column2 BLOB
+) ENGINE=crunch CONSOLIDATION_THRESHOLD=20;
+INSERT INTO t1 VALUES (1,'aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=');
+INSERT INTO t1 VALUES (3,'dmFsdWUy');
+INSERT INTO t1 VALUES (5,'dmFsdWU');
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+dmFsdWU
+OPTIMIZE TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	optimize	status	OK
+select column2 FROM t1 ORDER BY column1;
+column2
+aHR0cHM6Ly9naXRodWIuY29tL1NoZWxudXR0Mi9jcnVuY2g=
+dmFsdWUy
+dmFsdWU
+DROP TABLE t1;
