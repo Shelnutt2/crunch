@@ -31,8 +31,11 @@ handlerton *crunch_hton;
 
 // crunch file extensions
 static const char *crunch_exts[] = {
-    TABLE_SCHEME_EXTENSION,
+    TABLE_SCHEMA_EXTENSION,
     TABLE_DATA_EXTENSION,
+    TABLE_DELETE_EXTENSION,
+    TABLE_INDEX_SCHEMA_EXTENSION,
+    TABLE_INDEX_EXTENSION,
     NullS
 };
 
@@ -350,7 +353,7 @@ int crunch::rnd_next(uchar *buf) {
                       << e.what() << std::endl;
             rc = -44;
           }
-      }
+        }
 
         if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
           rc = -45;
@@ -933,7 +936,7 @@ int crunch::findTableFiles(std::string folderName) {
       }
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
-      std::smatch schemaMatches, dataMatches, indexMatches;
+      std::smatch schemaMatches, dataMatches, indexSchemaMatches, indexMatches;
       // Must check for TABLE_DATA_EXTENSION first, since a regex for schema will match a substring of the data files
       if (std::regex_search(extension, dataMatches, dataFileExtensionRegex)) {
         try {
@@ -1041,32 +1044,25 @@ int crunch::findTableFiles(std::string folderName) {
         }
         if (ret)
           return ret;
-      } else if (std::regex_search(extension, indexMatches, indexFileExtensionRegex)) {
+      } else if (std::regex_search(extension, indexSchemaMatches, indexSchemaFileExtensionRegex)) {
         try {
-
           bool fileExists = false;
-          uint8_t indexID = std::stoi(indexMatches[1]);
-          std::string newIndexFile = it;
-          if(indexFiles.find(indexID) != indexFiles.end()) {
-            for (auto existingFile : indexFiles[indexID]) {
-              if (existingFile.fileName == newIndexFile) {
-                fileExists = true;
-                break;
-              }
-            }
-          }
-          if (!fileExists) {
-            indexFile indexStruct = {newIndexFile, // Filename
-                                 indexID, // Index ID
-                                 getFilesize(newIndexFile.c_str()), // Size
-                                 0 // Number of rows
-            };
-            indexFiles[indexID].push_back(indexStruct);
-          }
+          uint8_t indexID = std::stoi(indexSchemaMatches[1]);
+          std::string newIndexSchemaFile = it;
+          indexSchemaFiles[indexID] = newIndexSchemaFile;
+
+          // Get schema struct name from mysql filepath name
+          std::string structName = parseFileNameForIndexStructName(newIndexSchemaFile);
+          // Parse schema from what was stored during create table
+          auto capnpIndexParsedSchema = parser.parseDiskFile(structName, newIndexSchemaFile, {"/usr/include"});
+
+
+          // Get the nested structure from file, for now there is only a single struct in the schema files
+          indexSchemas[indexID] = capnpIndexParsedSchema.getNested(structName).asStruct();
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
                     << __LINE__
-                    << ", exception_line: "  << e.getFile() << ":"
+                    << ", exception_line: " << e.getFile() << ":"
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1020;
@@ -1087,6 +1083,53 @@ int crunch::findTableFiles(std::string folderName) {
           std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
                     << "errored when open file with: " << e.what() << std::endl;
           return -1023;
+        };
+      } else if (std::regex_search(extension, indexMatches, indexFileExtensionRegex)) {
+        try {
+
+          bool fileExists = false;
+          uint8_t indexID = std::stoi(indexMatches[1]);
+          std::string newIndexFile = it;
+          if (indexFiles.find(indexID) != indexFiles.end()) {
+            for (auto existingFile : indexFiles[indexID]) {
+              if (existingFile.fileName == newIndexFile) {
+                fileExists = true;
+                break;
+              }
+            }
+          }
+          if (!fileExists) {
+            indexFile indexStruct = {newIndexFile, // Filename
+                                     indexID, // Index ID
+                                     getFilesize(newIndexFile.c_str()), // Size
+                                     0 // Number of rows
+            };
+            indexFiles[indexID].push_back(indexStruct);
+          }
+        } catch (kj::Exception e) {
+          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
+                    << __LINE__
+                    << ", exception_line: " << e.getFile() << ":"
+                    << e.getLine() << ", type: " << (int) e.getType()
+                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
+          return -1030;
+        } catch (const std::invalid_argument &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1031;
+        } catch (const std::out_of_range &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1032;
+        } catch (const std::exception &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << "errored when open file with: " << e.what() << std::endl;
+          return -1033;
         };
       }
     }
@@ -1213,7 +1256,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
   baseFilePath = name + std::string("/") + table_arg->s->table_name.str;
   // Let mysql create the file for us
   if ((create_file = my_create(fn_format(name_buff, (baseFilePath).c_str(), "",
-                                         ("." + std::to_string(schemaVersion) + TABLE_SCHEME_EXTENSION).c_str(),
+                                         ("." + std::to_string(schemaVersion) + TABLE_SCHEMA_EXTENSION).c_str(),
                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME), 0,
                                O_RDWR | O_TRUNC, MYF(MY_WME))) < 0)
     DBUG_RETURN(-1);
@@ -1238,6 +1281,17 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
     DBUG_RETURN(-1);
 
   my_close(create_file, MYF(0));
+
+  if ((create_file = my_create(fn_format(name_buff, "crunchrowlocation", name,
+                                         ".capnp",
+                                         MY_REPLACE_EXT | MY_UNPACK_FILENAME), 0,
+                               O_RDWR | O_TRUNC, MYF(MY_WME))) < 0)
+    DBUG_RETURN(-1);
+
+  // Write the capnp schema to schema file
+  ::write(create_file, CRUNCH_ROW_LOCATION_SCHEMA, strlen(CRUNCH_ROW_LOCATION_SCHEMA));
+  my_close(create_file, MYF(0));
+
 
   // Create index schemas
   DBUG_RETURN(createIndexesFromTable(table_arg));
@@ -1362,7 +1416,7 @@ int crunch::rename_table(const char *from, const char *to) {
  * @param check_opt unused
  * @return status of consolidation
  */
-int crunch::optimize(THD* thd, HA_CHECK_OPT* check_opt) {
+int crunch::optimize(THD *thd, HA_CHECK_OPT *check_opt) {
   DBUG_ENTER("crunch::optimize");
   DBUG_RETURN(consolidateFiles());
 }

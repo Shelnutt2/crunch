@@ -37,6 +37,13 @@
 #define NON_MYSQL_FIELD_COUNT 2
 #endif
 
+#define CRUNCH_ROW_LOCATION_SCHEMA "@0x9dc51f5a1bdb000d;\n\
+struct CrunchRowLocation{\n\
+    fileName @0 :Text;\n\
+    rowStartLocation @1 :UInt64;\n\
+    rowEndLocation @2 :UInt64;\n\
+}"
+
 typedef struct schema_struct {
     ::capnp::StructSchema schema;
     uint64_t minimumCompatibleSchemaVersion;

@@ -45,11 +45,11 @@ bool crunchInplaceAlterCtx::buildNewCapnpSchema(bool compatible) {
 
   //Build base schemaFileName
   this->schemaFileName =
-      this->alteredTable->s->table_name.str + ("." + std::to_string(newSchemaVersion) + TABLE_SCHEME_EXTENSION);
+      this->alteredTable->s->table_name.str + ("." + std::to_string(newSchemaVersion) + TABLE_SCHEMA_EXTENSION);
   // Let mysql create the file for us
   this->transactionSchemaFile = fn_format(name_buff, this->schemaFileName.c_str(), this->transactionDirectory.c_str(),
                                           ("." + std::to_string(this->schemaVersion + 1) +
-                                           TABLE_SCHEME_EXTENSION).c_str(),
+                                           TABLE_SCHEMA_EXTENSION).c_str(),
                                           MY_UNPACK_FILENAME);
   // Create new schema file in transaction directory
   if ((create_file = my_create(this->transactionSchemaFile.c_str(), 0,

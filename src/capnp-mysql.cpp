@@ -59,23 +59,23 @@ std::string getCapnpTypeFromField(Field *field) {
       return "Float32";
 
     case MYSQL_TYPE_TINY:
-      if(((Field_num*)field)->unsigned_flag)
+      if (((Field_num *) field)->unsigned_flag)
         return "UInt8";
       return "Int8";
     case MYSQL_TYPE_SHORT:
     case MYSQL_TYPE_YEAR:
-      if(((Field_num*)field)->unsigned_flag)
+      if (((Field_num *) field)->unsigned_flag)
         return "UInt16";
       return "Int16";
 
     case MYSQL_TYPE_INT24:
-      if(((Field_num*)field)->unsigned_flag)
+      if (((Field_num *) field)->unsigned_flag)
         return "UInt32";
       return "Int32";
 
     case MYSQL_TYPE_LONG:
     case MYSQL_TYPE_LONGLONG:
-      if(((Field_num*)field)->unsigned_flag)
+      if (((Field_num *) field)->unsigned_flag)
         return "UInt64";
       return "Int64";
 
@@ -206,21 +206,26 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
 
   if (structName.empty()) {
     structName = key_info->name;
-    structName.resize(std::remove_if(structName.begin(), structName.end(), [](char x) { return !isalnum(x); }) - structName.begin());
+    structName.resize(
+        std::remove_if(structName.begin(), structName.end(), [](char x) { return !isalnum(x); }) - structName.begin());
     // Cap'n Proto schema's require the first character to be upper case for struct names
     structName[0] = toupper(structName[0]);
   }
   std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
+  output += "using import \"crunchrowlocation.capnp\".CrunchRowLocation;\n\n";
   output += "struct " + structName + " {\n";
 
-  for(uint i = 0; i < key_info->user_defined_key_parts; i++) {
+  uint i = 0;
+  for (i = 0; i < key_info->user_defined_key_parts; i++) {
     Field *field = key_info->key_part[i].field;
     output +=
-        "  " + camelCase(field->field_name) + " @" + std::to_string(field->field_index) +
+        "  " + camelCase(field->field_name) + " @" + std::to_string(i) +
         " :" +
         getCapnpTypeFromField(field) + ";\n";
 
   }
+
+  output += "  crunchRowLocation @" + std::to_string(i) + " :CrunchRowLocation;\n";
 
   output += "}";
 

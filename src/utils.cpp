@@ -23,8 +23,9 @@
 
 #endif
 
-std::regex schemaFileExtensionRegex(".(\\d+)" + std::string(TABLE_SCHEME_EXTENSION));
+std::regex schemaFileExtensionRegex(".(\\d+)" + std::string(TABLE_SCHEMA_EXTENSION));
 std::regex dataFileExtensionRegex(".(\\d+)" + std::string(TABLE_DATA_EXTENSION));
+std::regex indexSchemaFileExtensionRegex(".(\\d+)" + std::string(TABLE_INDEX_SCHEMA_EXTENSION));
 std::regex indexFileExtensionRegex(".(\\d+)" + std::string(TABLE_INDEX_EXTENSION));
 
 /** Split string into a vector by regex
@@ -50,6 +51,27 @@ std::vector<std::string> split(const std::string &input, const std::string &rege
 std::string parseFileNameForStructName(std::string filepathName) {
   std::vector<std::string> parts = split(filepathName, "/");
   std::string name = parts[parts.size() - 1];
+  // Cap'n Proto schema do not allow special characters
+  name.resize(std::remove_if(name.begin(), name.end(), [](char x) { return !isalnum(x); }) - name.begin());
+  // Cap'n Proto schema's require the first character to be upper case for struct names
+  name[0] = toupper(name[0]);
+  return name;
+}
+
+/** Parse a mysql file path and get the corresponding cap'n proto index struct name
+ *
+ * @param filepathName
+ * @return
+ */
+std::string parseFileNameForIndexStructName(std::string filepathName) {
+  std::vector<std::string> parts = split(filepathName, "/");
+  std::string name = parts[parts.size() - 1];
+  // Split to remove extension and indexID
+  parts = split(name, "\\.");
+  name = parts[0];
+  // Split to remove table name
+  parts = split(name, "-");
+  name = parts[parts.size() - 1];
   // Cap'n Proto schema do not allow special characters
   name.resize(std::remove_if(name.begin(), name.end(), [](char x) { return !isalnum(x); }) - name.begin());
   // Cap'n Proto schema's require the first character to be upper case for struct names
