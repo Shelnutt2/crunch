@@ -933,7 +933,7 @@ int crunch::findTableFiles(std::string folderName) {
       }
       std::string extension = it.substr(extensionIndex);
       //std::cout << "found extension: " << extension << " in file: " << it <<std::endl;
-      std::smatch schemaMatches, dataMatches;
+      std::smatch schemaMatches, dataMatches, indexMatches;
       // Must check for TABLE_DATA_EXTENSION first, since a regex for schema will match a substring of the data files
       if (std::regex_search(extension, dataMatches, dataFileExtensionRegex)) {
         try {
@@ -942,17 +942,19 @@ int crunch::findTableFiles(std::string folderName) {
           uint64_t schema_version = std::stoul(dataMatches[1]);
           std::string newDataFile = it;
           for (auto existingFile : dataFiles) {
-            if (existingFile.fileName == newDataFile)
+            if (existingFile.fileName == newDataFile) {
               fileExists = true;
+              break;
+            }
           }
           if (!fileExists) {
             data dataStruct = {newDataFile, schema_version};
             dataFiles.push_back(dataStruct);
           }
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
                     << __LINE__
-                    << ", exception_line: "
+                    << ", exception_line: " << e.getFile() << ":"
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1010;
@@ -999,9 +1001,9 @@ int crunch::findTableFiles(std::string folderName) {
 
           capnpRowSchemas[schema_version] = capnpRowSchema;
         } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
                     << __LINE__
-                    << ", exception_line: "
+                    << ", exception_line: " << e.getFile() << ":"
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1000;
@@ -1039,6 +1041,53 @@ int crunch::findTableFiles(std::string folderName) {
         }
         if (ret)
           return ret;
+      } else if (std::regex_search(extension, indexMatches, indexFileExtensionRegex)) {
+        try {
+
+          bool fileExists = false;
+          uint8_t indexID = std::stoi(indexMatches[1]);
+          std::string newIndexFile = it;
+          if(indexFiles.find(indexID) != indexFiles.end()) {
+            for (auto existingFile : indexFiles[indexID]) {
+              if (existingFile.fileName == newIndexFile) {
+                fileExists = true;
+                break;
+              }
+            }
+          }
+          if (!fileExists) {
+            indexFile indexStruct = {newIndexFile, // Filename
+                                 indexID, // Index ID
+                                 getFilesize(newIndexFile.c_str()), // Size
+                                 0 // Number of rows
+            };
+            indexFiles[indexID].push_back(indexStruct);
+          }
+        } catch (kj::Exception e) {
+          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
+                    << __LINE__
+                    << ", exception_line: "  << e.getFile() << ":"
+                    << e.getLine() << ", type: " << (int) e.getType()
+                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
+          return -1020;
+        } catch (const std::invalid_argument &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1021;
+        } catch (const std::out_of_range &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1022;
+        } catch (const std::exception &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << "errored when open file with: " << e.what() << std::endl;
+          return -1023;
+        };
       }
     }
   }
@@ -1190,6 +1239,7 @@ int crunch::create(const char *name, TABLE *table_arg, HA_CREATE_INFO *create_in
 
   my_close(create_file, MYF(0));
 
+  // Create index schemas
   DBUG_RETURN(createIndexesFromTable(table_arg));
 }
 

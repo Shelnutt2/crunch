@@ -48,6 +48,13 @@ typedef struct data_struct {
     uint64_t schemaVersion;
 } data;
 
+typedef struct index_struct {
+    std::string fileName;
+    uint8_t indexID;
+    size_t size;
+    uint64_t rows;
+} indexFile;
+
 uint64_t generateRandomId();
 
 std::string

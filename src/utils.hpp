@@ -15,11 +15,13 @@
 #define TABLE_DELETE_EXTENSION ".deleted.capnpd"
 #define TABLE_SCHEME_EXTENSION ".capnp"
 #define TABLE_INDEX_SCHEME_EXTENSION ".index.capnp"
+#define TABLE_INDEX_EXTENSION ".index.capnpd"
 #define TABLE_TRANSACTION_DIRECTORY "transactions"
 #define TABLE_DATA_DIRECTORY "data"
 
 extern std::regex schemaFileExtensionRegex;
 extern std::regex dataFileExtensionRegex;
+extern std::regex indexFileExtensionRegex;
 
 /** Split string into a vector by regex
  *

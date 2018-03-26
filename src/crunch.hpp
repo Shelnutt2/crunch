@@ -154,6 +154,7 @@ private:
     std::map<uint64_t, std::string> schemaFiles;
     std::string currentDataFile;
     std::vector<data> dataFiles;
+    std::map<uint, std::vector<indexFile>> indexFiles;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
