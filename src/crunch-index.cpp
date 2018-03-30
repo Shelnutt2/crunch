@@ -4,8 +4,10 @@
 */
 
 #include <iostream>
+#include <libgen.h>
 #include "crunch.hpp"
 #include "utils.hpp"
+#include "crunchrowlocation.capnp.h"
 
 /**
  * @brief Function to read all indexes and create schema files
@@ -50,7 +52,9 @@ int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder>
 
   int rc = 0;
   for (auto index : indexSchemas) {
-    std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, schemaForMessage, index.first);
+    // Build index
+    std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, schemaForMessage, index.first, txn);
+    // Write index
     rc = write_index(std::move(indexRow), txn, index.first);
     if (!rc)
       return rc;
@@ -104,26 +108,37 @@ int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, c
  */
 std::unique_ptr<capnp::MallocMessageBuilder>
 crunch::build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage,
-                    schema schemaForMessage, uint8_t indexID) {
+                    schema schemaForMessage, uint8_t indexID, crunchTxn *txn) {
   if (indexSchemas.find(indexID) == indexSchemas.end())
     return nullptr;
 
+  // Get schema of index
   capnp::StructSchema indexSchema = indexSchemas[indexID];
 
   std::unique_ptr<capnp::MallocMessageBuilder> indexRow = std::make_unique<capnp::MallocMessageBuilder>();
   capnp::DynamicStruct::Builder rowBuilder = indexRow->initRoot<capnp::DynamicStruct>(indexSchema);
 
+
   capnp::DynamicStruct::Builder tableRow = tableRowMessage->getRoot<capnp::DynamicStruct>(schemaForMessage.schema);
 
-  for (capnp::StructSchema::Field indexField : indexSchema.getFields()) {
-    auto fieldName = indexField.getProto().getName();
-    if(fieldName == CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) {
-        //TODO: set row location
-    } else {
-      rowBuilder.set(fieldName, tableRow.get(fieldName).asReader());
-    }
+  // Set crunch row location struct
+  capnp::DynamicStruct::Builder builder = rowBuilder.init(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
+  // Get datafile base name
+  std::string DataFile = txn->getTransactionDataFile(name);
+  char* buff = new char[DataFile.size()+1];
+  strcpy(buff, DataFile.c_str());
+
+  builder.set("fileName", basename(buff));
+  builder.set("rowEndLocation", 0);
+  builder.set("rowStartLocation", 1);
+
+
+  capnp::StructSchema::FieldList indexFields = indexSchema.getFields();
+  // Skip first field as it is rowlocation struct
+  for (int i = 1; i < indexFields.size(); i++) {
+    auto fieldName = indexFields[i].getProto().getName();
+    rowBuilder.set(fieldName, tableRow.get(fieldName).asReader());
   }
 
   return indexRow;
-
 }

@@ -13,7 +13,7 @@ else ()
     set (CMAKE_CXX_STANDARD 14)
 endif ()
 
-file(GLOB SOURCE_FILES src/*.cpp crunchdelete.capnp.c++)
+file(GLOB SOURCE_FILES src/*.cpp src/*.capnp.c++)
 
 IF(CRUNCH_COMPILE_STANDALONE)
 

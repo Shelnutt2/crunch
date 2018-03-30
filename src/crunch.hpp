@@ -117,7 +117,7 @@ class crunch : public handler {
     int build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, schema schemaForMessage, crunchTxn *txn);
     int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID);
     std::unique_ptr<capnp::MallocMessageBuilder> build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
-                                                             schema schemaForMessage, uint8_t indexID);
+                                                             schema schemaForMessage, uint8_t indexID, crunchTxn *txn);
     uint max_supported_keys() const override {
       DBUG_ENTER("crunch::max_supported_keys");
 
