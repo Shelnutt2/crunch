@@ -17,6 +17,7 @@
 #include <regex>
 #include <fstream>
 #include <cstdint>
+#include <libgen.h>
 
 #ifdef UNKNOWN
 #undef UNKNOWN
@@ -678,7 +679,9 @@ int crunch::delete_row(const uchar *buf) {
   //crunch-delete will create file if not exists and serialize with capnproto
   uint64_t rowStartLocation = (dataPointer - dataFileStart);
   uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
-  markRowAsDeleted(currentDataFile, rowStartLocation, rowEndLocation);
+  char* buff = new char[currentDataFile.size()+1];
+  strcpy(buff, currentDataFile.c_str());
+  markRowAsDeleted(basename(buff), rowStartLocation, rowEndLocation);
 
   DBUG_RETURN(0);
 }

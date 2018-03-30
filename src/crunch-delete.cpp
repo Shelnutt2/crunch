@@ -9,6 +9,7 @@
 #include "crunch-txn.hpp"
 #include <stdio.h>
 #include <iostream>
+#include <libgen.h>
 
 /**
  * Takes a file descriptor and reads delete messages into a map
@@ -59,7 +60,10 @@ int crunch::readDeletesIntoMap(int deleteFileDescriptor) {
  * @return Returns true if row is deleted
  */
 bool crunch::checkForDeletedRow(std::string fileName, uint64_t rowStartLocation) {
-  auto fileNameMap = deleteMap.find(fileName);
+  char* buff = new char[fileName.size()+1];
+  strcpy(buff, fileName.c_str());
+  std::string deleteFileName = basename(buff);
+  auto fileNameMap = deleteMap.find(deleteFileName);
   if(fileNameMap == deleteMap.end())
     return false;
 
