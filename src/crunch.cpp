@@ -585,7 +585,7 @@ int crunch::write_buffer(uchar *buf) {
   try {
     crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
 
-    std::unique_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
+    std::shared_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
 
     // Use stored structure
     capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(
@@ -595,7 +595,11 @@ int crunch::write_buffer(uchar *buf) {
 
     build_row(&row, &nulls);
 
-    ret = write_message(std::move(tableRow), txn);
+    ret = write_message(tableRow, txn);
+
+    if (!ret) {
+      ret = build_and_write_indexes(tableRow, txn);
+    }
 
   } catch (kj::Exception e) {
     std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
@@ -615,7 +619,7 @@ int crunch::write_buffer(uchar *buf) {
   return ret;
 }
 
-int crunch::write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn) {
+int crunch::write_message(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn) {
 
   // Use a message builder for reach row
   try {
@@ -1046,7 +1050,6 @@ int crunch::findTableFiles(std::string folderName) {
           return ret;
       } else if (std::regex_search(extension, indexSchemaMatches, indexSchemaFileExtensionRegex)) {
         try {
-          bool fileExists = false;
           uint8_t indexID = std::stoi(indexSchemaMatches[1]);
           std::string newIndexSchemaFile = it;
           indexSchemaFiles[indexID] = newIndexSchemaFile;

@@ -78,7 +78,7 @@ class crunch : public handler {
     int rnd_end();
     void build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls);
     int write_buffer(uchar *buf);
-    int write_message(std::unique_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn);
+    int write_message(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn);
     int write_row(uchar *buf);
     int delete_row(const uchar *buf);
     int update_row(const uchar *old_data, uchar *new_data);
@@ -114,6 +114,10 @@ class crunch : public handler {
 
     /* START INDEX SUPPORT */
     int createIndexesFromTable(TABLE *table_arg);
+    int build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn);
+    int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID);
+    std::unique_ptr<capnp::MallocMessageBuilder> build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
+                                                             uint8_t indexID);
     uint max_supported_keys() const override {
       DBUG_ENTER("crunch::max_supported_keys");
 
