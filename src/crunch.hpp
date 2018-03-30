@@ -32,6 +32,9 @@
 #include "crunch-sysvars.hpp"
 #include "capnp-mysql.hpp"
 
+#include <btree.h>
+#include <btree_map.h>
+
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
 
@@ -118,6 +121,7 @@ class crunch : public handler {
     int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID);
     std::unique_ptr<capnp::MallocMessageBuilder> build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
                                                              schema schemaForMessage, uint8_t indexID, crunchTxn *txn);
+    int readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct);
     uint max_supported_keys() const override {
       DBUG_ENTER("crunch::max_supported_keys");
 
@@ -187,6 +191,8 @@ private:
     uint64_t schemaVersion;
 
     bool checkIfColumnChangeSupportedInplace(TABLE *alteredTable);
+
+    std::map<uint8_t, std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedIndexes;
 };
 
 

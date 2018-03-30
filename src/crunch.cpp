@@ -608,11 +608,11 @@ int crunch::write_buffer(uchar *buf) {
 
     build_row(&row, &nulls);
 
-    ret = write_message(tableRow, txn);
-
     if (!ret) {
       ret = build_and_write_indexes(tableRow, schemaForMessage, txn);
     }
+    if(!ret)
+      ret = write_message(tableRow, txn);
   } catch (kj::Exception e) {
     std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
               << ", exception_line: " << e.getFile() << ":" << e.getLine()
@@ -1077,12 +1077,26 @@ int crunch::findTableFiles(std::string folderName) {
             }
           }
           if (!fileExists) {
+            char* buff = new char[newIndexFile.size()+1];
+            strcpy(buff, newIndexFile.c_str());
+            newIndexFile = basename(buff);
             indexFile indexStruct = {newIndexFile, // Filename
                                      indexID, // Index ID
                                      getFilesize(newIndexFile.c_str()), // Size
                                      0 // Number of rows
             };
             indexFiles[indexID].push_back(indexStruct);
+            //Open crunch index File
+            int indexFileDescriptor = my_open(it.c_str(), mode, 0);
+            ret = readIndexIntoBTree(indexFileDescriptor, indexStruct);
+            if (ret)
+              return ret ;
+            if (isFdValid(indexFileDescriptor)) {
+              ret = my_close(indexFileDescriptor, 0);
+              indexFileDescriptor = 0;
+            }
+            if (ret)
+              return ret;
           }
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"

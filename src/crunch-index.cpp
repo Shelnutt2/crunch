@@ -8,6 +8,7 @@
 #include "crunch.hpp"
 #include "utils.hpp"
 #include "crunchrowlocation.capnp.h"
+#include "../../../libmariadb/include/ma_server_error.h"
 
 /**
  * @brief Function to read all indexes and create schema files
@@ -55,6 +56,14 @@ int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder>
     // Build index
     std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, schemaForMessage, index.first, txn);
     // Write index
+    std::string combinedIndexString = indexRow->getRoot<capnp::DynamicStruct>(indexSchemas[index.first])
+        .get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>().cStr();
+    for(auto &indexMap : unConsolidatedIndexes) {
+      if(indexMap.second->find(combinedIndexString) != indexMap.second->end()) {
+        print_keydup_error(table, &table->key_info[indexMap.first], MYF(0));
+        return HA_ERR_FOUND_DUPP_KEY;
+      }
+    }
     rc = write_index(std::move(indexRow), txn, index.first);
     if (!rc)
       return rc;
@@ -135,10 +144,57 @@ crunch::build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage
 
   capnp::StructSchema::FieldList indexFields = indexSchema.getFields();
   // Skip first field as it is rowlocation struct
-  for (int i = 1; i < indexFields.size(); i++) {
+  kj::String combinedField;
+  for (uint i = NON_MYSQL_INDEX_FIELD_COUNT; i < indexFields.size(); i++) {
     auto fieldName = indexFields[i].getProto().getName();
     rowBuilder.set(fieldName, tableRow.get(fieldName).asReader());
+    combinedField = kj::str(combinedField,kj::str("-", dynamicValueToString(tableRow.get(fieldName).asReader())));
   }
 
+  rowBuilder.set(CRUNCH_INDEX_COMBINED_FIELD_NAME, combinedField.cStr());
+
   return indexRow;
+}
+
+int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
+  long size = lseek(indexFileDescriptor, 0, SEEK_END); // seek to end of file
+  lseek(indexFileDescriptor, 0, SEEK_SET); // seek back to beginning of file
+  if (size > 0) {
+    if(indexSchemas.find(indexStruct.indexID) == indexSchemas.end())
+     return -1;
+    capnp::StructSchema schema = indexSchemas[indexStruct.indexID];
+      while (lseek(indexFileDescriptor, 0, SEEK_CUR) != size) {
+        try {
+          capnp::StreamFdMessageReader message(indexFileDescriptor);
+          capnp::DynamicStruct::Reader indexRow = message.getRoot<capnp::DynamicStruct>(schema);
+
+          std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>> index;
+          if(unConsolidatedIndexes.find(indexStruct.indexID) == unConsolidatedIndexes.end())
+            index = std::make_unique<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>();
+          else
+            index = std::move(unConsolidatedIndexes[indexStruct.indexID]);
+
+          // TODO: check if inserted successfully
+          index->insert(std::pair<std::string, capnp::DynamicStruct::Reader>(
+              indexRow.get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>(), indexRow));
+
+          unConsolidatedIndexes[indexStruct.indexID] = std::move(index);
+
+        } catch (kj::Exception e) {
+          if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
+            std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
+                      << ", exception_line: "
+                      << e.getLine() << ", type: " << (int) e.getType()
+                      << ", e.what(): " << e.getDescription().cStr() << std::endl;
+            return -1;
+          } else {
+            break;
+          }
+        } catch (std::exception e) {
+          std::cerr << "crunch: Error reading delete file: " << e.what() << std::endl;
+          return -1;
+        }
+      }
+  }
+  return 0;
 }

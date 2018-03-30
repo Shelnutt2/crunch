@@ -218,3 +218,32 @@ std::string determineSymLink(std::string file) {
   }
   return "";
 }
+
+kj::StringPtr dynamicValueToString(capnp::DynamicValue::Reader value) {
+  // Print an arbitrary message via the dynamic API by
+  // iterating over the schema.  Look at the handling
+  // of STRUCT in particular.
+
+  kj::StringPtr valString;
+  switch (value.getType()) {
+    case capnp::DynamicValue::VOID:
+      break;
+    case capnp::DynamicValue::BOOL:
+      valString = (value.as<bool>() ? "1" : "0");
+      break;
+    case capnp::DynamicValue::INT:
+      valString = std::to_string(value.as<int64_t>());
+      break;
+    case capnp::DynamicValue::UINT:
+      valString = std::to_string(value.as<uint64_t>());
+      break;
+    case capnp::DynamicValue::FLOAT:
+      valString = std::to_string(value.as<double>());
+      break;
+    case capnp::DynamicValue::TEXT:
+      valString = value.as<capnp::Text>();
+    default:
+      break;
+  }
+  return valString;
+}

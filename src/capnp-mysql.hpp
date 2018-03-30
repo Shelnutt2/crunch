@@ -37,6 +37,10 @@
 #define NON_MYSQL_FIELD_COUNT 2
 #endif
 
+#ifndef NON_MYSQL_INDEX_FIELD_COUNT
+#define NON_MYSQL_INDEX_FIELD_COUNT 2
+#endif
+
 #define CRUNCH_ROW_LOCATION_SCHEMA "@0x9dc51f5a1bdb000d;\n\
 struct CrunchRowLocation{\n\
     fileName @0 :Text;\n\
@@ -45,6 +49,8 @@ struct CrunchRowLocation{\n\
 }"
 
 #define CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME "crunchRowLocation"
+
+#define CRUNCH_INDEX_COMBINED_FIELD_NAME "crunchIndexCombined"
 
 typedef struct schema_struct {
     ::capnp::StructSchema schema;

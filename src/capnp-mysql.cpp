@@ -215,8 +215,11 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
   output += "using import \"crunchrowlocation.capnp\".CrunchRowLocation;\n\n";
   output += "struct " + structName + " {\n";
 
+
+  output += "  " + std::string(CRUNCH_INDEX_COMBINED_FIELD_NAME) + " @0 :Text;\n";
+  output += "  " + std::string(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) + " @1 :CrunchRowLocation;\n";
   uint i = 0;
-  for (i = 0; i < key_info->user_defined_key_parts; i++) {
+  for (i = NON_MYSQL_INDEX_FIELD_COUNT; i < key_info->user_defined_key_parts; i++) {
     Field *field = key_info->key_part[i].field;
     output +=
         "  " + camelCase(field->field_name) + " @" + std::to_string(i) +
@@ -224,8 +227,6 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
         getCapnpTypeFromField(field) + ";\n";
 
   }
-
-  output += "  " + std::string(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) + " @" + std::to_string(i) + " :CrunchRowLocation;\n";
 
   output += "}";
 

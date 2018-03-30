@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <regex>
+#include <kj/string.h>
+#include <capnp/dynamic.h>
 
 #define TABLE_CONSOLIDATE_DIRECTORY "consolidate"
 #define TABLE_DATA_EXTENSION ".capnpd"
@@ -74,4 +76,6 @@ std::vector<std::string> readDirectory(const std::string &name);
 int isFdValid(int fd);
 
 std::string determineSymLink(std::string file);
+
+kj::StringPtr dynamicValueToString(capnp::DynamicValue::Reader val);
 #endif //CRUNCH_UTILS_HPP
