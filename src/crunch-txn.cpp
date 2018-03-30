@@ -15,21 +15,14 @@
  */
 crunchTxn::crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory,
                      uint64_t schemaVersion) {
-  filesForTransaction *file = new filesForTransaction{};
-  file->tableName = name;
-  if (!dataDirectory.empty())
-    file->dataDirectory = dataDirectory;
-  else {
-    file->dataDirectory = name + "/" + std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
-    createDirectory(file->dataDirectory);
-  }
-  file->transactionDirectory = transactionDirectory;
-  file->schemaVersion = schemaVersion;
-  file->dataExtension = ("." + std::to_string(schemaVersion) + TABLE_DATA_EXTENSION);
-
-  this->tables[name] = file;
   this->isTxFailed = false;
-  this->tablesInUse = 1;
+  this->tablesInUse = 0;
+
+  this->startTimeNanoSeconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
+  uuid = sole::uuid4();
+  registerNewTable(name, dataDirectory, transactionDirectory, schemaVersion);
 }
 
 /**
@@ -104,32 +97,31 @@ int crunchTxn::begin() {
 
   char name_buff[FN_REFLEN];
   int ret = 0;
-
-  this->startTimeNanoSeconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-
-  uuid = sole::uuid4();
   //For each table we need to create files in disk to hold transaction data
   for (auto table : this->tables) {
     filesForTransaction *file = table.second;
     file->baseFileName = std::to_string(this->startTimeNanoSeconds) + "-" + uuid.str();
 
-    file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
-                                          file->dataExtension.c_str(),
-                                          MY_REPLACE_EXT | MY_UNPACK_FILENAME);
-
-    if (!isFdValid(file->transactionDataFileDescriptor)) {
-      file->transactionDataFileDescriptor = my_create(file->transactionDataFile.c_str(), 0,
-                                                      O_RDWR | O_TRUNC, MYF(MY_WME));
-    }
-
-    file->transactionDeleteFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
-                                            TABLE_DELETE_EXTENSION,
+    if(file->transactionDataFile.empty()) {
+      file->transactionDataFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
+                                            file->dataExtension.c_str(),
                                             MY_REPLACE_EXT | MY_UNPACK_FILENAME);
 
-    if (!isFdValid(file->transactionDeleteFileDescriptor)) {
-      file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
+      if (!isFdValid(file->transactionDataFileDescriptor)) {
+        file->transactionDataFileDescriptor = my_create(file->transactionDataFile.c_str(), 0,
                                                         O_RDWR | O_TRUNC, MYF(MY_WME));
+      }
+    }
+
+    if(file->transactionDeleteFile.empty()) {
+      file->transactionDeleteFile = fn_format(name_buff, file->baseFileName.c_str(), file->transactionDirectory.c_str(),
+                                              TABLE_DELETE_EXTENSION,
+                                              MY_REPLACE_EXT | MY_UNPACK_FILENAME);
+
+      if (!isFdValid(file->transactionDeleteFileDescriptor)) {
+        file->transactionDeleteFileDescriptor = my_create(file->transactionDeleteFile.c_str(), 0,
+                                                          O_RDWR | O_TRUNC, MYF(MY_WME));
+      }
     }
   }
   this->inProgress = true;
