@@ -9,7 +9,17 @@
 #include <handler.h>
 #include <chrono>
 #include <unordered_map>
+#include <map>
+#include <capnp/schema.h>
 #include "sole.hpp"
+
+typedef struct indexDetailsForTransactionStruct {
+    uint8_t indexID;
+
+    std::string transactionIndexFile;
+
+    int transactionIndexFileDescriptor;
+} indexDetailsForTransaction;
 
 typedef struct filesForTransaction {
     std::string tableName;
@@ -29,14 +39,18 @@ typedef struct filesForTransaction {
     uint64_t schemaVersion;
 
     std::string dataExtension;
+
     std::string dataDirectory;
+
+    std::map<uint8_t, std::unique_ptr<indexDetailsForTransaction>> transactionIndexFiles;
 } filesForTransaction;
 
 class crunchTxn {
 
 
 public:
-    crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+      crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion,
+                std::map<uint8_t, ::capnp::StructSchema> indexes);
 
     ~crunchTxn();
 
@@ -48,15 +62,20 @@ public:
 
     int rollback();
 
-    int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion);
+    int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory,
+                         uint64_t schemaVersion, std::map<uint8_t, ::capnp::StructSchema> indexes);
 
     int getTransactionDataFileDescriptor(std::string name);
 
     int getTransactionDeleteFileDescriptor(std::string name);
 
+    int getTransactionIndexFileDescriptor(std::string name, uint8_t indexID);
+
     std::string getTransactionDataFile(std::string name);
 
     std::string getTransactionDeleteFile(std::string name);
+
+    std::string getTransactionIndexFile(std::string name, uint8_t indexID);
 
     std::string getTransactiondataDirectory(std::string name);
 
@@ -70,7 +89,7 @@ public:
 
     int tablesInUse;
 
-    std::unordered_map<std::string, filesForTransaction*> tables;
+    std::unordered_map<std::string, std::unique_ptr<filesForTransaction>> tables;
 
     std::uint64_t startTimeNanoSeconds;
 };

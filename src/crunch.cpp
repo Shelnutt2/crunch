@@ -730,7 +730,7 @@ int crunch::start_stmt(THD *thd, thr_lock_type lock_type) {
 
   crunchTxn *txn = (crunchTxn *) thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion);
+    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion, indexSchemas);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
@@ -739,7 +739,7 @@ int crunch::start_stmt(THD *thd, thr_lock_type lock_type) {
     //txn->stmt= txn->new_savepoint();
     trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
   } else if (txn->inProgress) {
-    txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion);
+    txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion, indexSchemas);
   }
   DBUG_RETURN(ret);
 }
@@ -798,7 +798,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
   int rc = 0;
   crunchTxn *txn = (crunchTxn *) thd_get_ha_data(thd, crunch_hton);
   if (txn == NULL) {
-    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion);
+    txn = new crunchTxn(name, dataFolder, transactionDirectory, schemaVersion, indexSchemas);
     thd_set_ha_data(thd, crunch_hton, txn);
   }
 
@@ -815,7 +815,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
       trans_register_ha(thd, thd->in_multi_stmt_transaction_mode(), crunch_hton);
     } else if (txn->inProgress) {
       DBUG_PRINT("debug", ("Using existing transaction %s", txn->uuid.str().c_str()));
-      txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion);
+      txn->registerNewTable(name, dataFolder, transactionDirectory, schemaVersion, indexSchemas);
     }
   } else {
     if (txn->inProgress) {
@@ -847,7 +847,7 @@ int crunch::external_lock(THD *thd, int lock_type) {
 int crunch::consolidateFiles() {
   DBUG_ENTER("crunch::consolidateFiles");
   int res = 0;
-  crunchTxn *txn = new crunchTxn(name, "", transactionDirectory, schemaVersion);
+  crunchTxn *txn = new crunchTxn(name, "", transactionDirectory, schemaVersion, indexSchemas);
   int err = 0;
   try {
     rnd_init(true);

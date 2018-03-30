@@ -160,7 +160,7 @@ private:
     std::vector<data> dataFiles;
     std::map<uint, std::vector<indexFile>> indexFiles;
     std::map<uint, std::string> indexSchemaFiles;
-    std::map<uint, ::capnp::StructSchema> indexSchemas;
+    std::map<uint8_t, ::capnp::StructSchema> indexSchemas;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
