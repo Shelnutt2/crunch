@@ -486,94 +486,105 @@ int crunch::rnd_end() {
 void crunch::build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls) {
   // Loop through each field to write row
 
-  int index = 0;
-  for (Field **field = table->field; *field; field++) {
-    std::string capnpFieldName = camelCase((*field)->field_name);
-    if ((*field)->is_null()) {
-      nulls->set(index++, true);
-    } else {
-      nulls->set(index++, false);
-      switch ((*field)->type()) {
+  try {
+    int index = 0;
+    for (Field **field = table->field; *field; field++) {
+      std::string capnpFieldName = camelCase((*field)->field_name);
+      if ((*field)->is_null()) {
+        nulls->set(index++, true);
+      } else {
+        nulls->set(index++, false);
+        switch ((*field)->type()) {
 
-        case MYSQL_TYPE_DOUBLE: {
-          row->set(capnpFieldName, (*field)->val_real());
-          break;
-        }
-        case MYSQL_TYPE_DECIMAL:
-        case MYSQL_TYPE_NEWDECIMAL: {
-          row->set(capnpFieldName, (*field)->val_real());
-          break;
-        }
+          case MYSQL_TYPE_DOUBLE: {
+            row->set(capnpFieldName, (*field)->val_real());
+            break;
+          }
+          case MYSQL_TYPE_DECIMAL:
+          case MYSQL_TYPE_NEWDECIMAL: {
+            row->set(capnpFieldName, (*field)->val_real());
+            break;
+          }
 
-        case MYSQL_TYPE_FLOAT: {
-          row->set(capnpFieldName, (*field)->val_real());
-          break;
-        }
+          case MYSQL_TYPE_FLOAT: {
+            row->set(capnpFieldName, (*field)->val_real());
+            break;
+          }
 
-        case MYSQL_TYPE_TINY:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_YEAR:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_LONGLONG: {
-          row->set(capnpFieldName, (*field)->val_int());
-          break;
-        }
+          case MYSQL_TYPE_TINY:
+          case MYSQL_TYPE_SHORT:
+          case MYSQL_TYPE_YEAR:
+          case MYSQL_TYPE_INT24:
+          case MYSQL_TYPE_LONG:
+          case MYSQL_TYPE_LONGLONG: {
+            row->set(capnpFieldName, (*field)->val_int());
+            break;
+          }
 
-        case MYSQL_TYPE_NULL: {
-          row->set(capnpFieldName, capnp::DynamicValue::VOID);
-          break;
-        }
+          case MYSQL_TYPE_NULL: {
+            row->set(capnpFieldName, capnp::DynamicValue::VOID);
+            break;
+          }
 
-        case MYSQL_TYPE_BIT: {
-          row->set(capnpFieldName, (*field)->val_int());
-          break;
-        }
+          case MYSQL_TYPE_BIT: {
+            row->set(capnpFieldName, (*field)->val_int());
+            break;
+          }
 
-        case MYSQL_TYPE_VARCHAR:
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_VAR_STRING:
-        case MYSQL_TYPE_SET: {
-          char attribute_buffer[1024];
-          String attribute(attribute_buffer, sizeof(attribute_buffer),
-                           &my_charset_utf8_general_ci);
-          (*field)->val_str(&attribute, &attribute);
-          capnp::Text::Reader text = attribute.c_ptr_safe();
-          row->set(capnpFieldName, text);
-          break;
-        }
+          case MYSQL_TYPE_VARCHAR:
+          case MYSQL_TYPE_STRING:
+          case MYSQL_TYPE_VAR_STRING:
+          case MYSQL_TYPE_SET: {
+            char attribute_buffer[1024];
+            String attribute(attribute_buffer, sizeof(attribute_buffer),
+                             &my_charset_utf8_general_ci);
+            (*field)->val_str(&attribute, &attribute);
+            capnp::Text::Reader text = attribute.c_ptr_safe();
+            row->set(capnpFieldName, text);
+            break;
+          }
 
-        case MYSQL_TYPE_GEOMETRY:
-        case MYSQL_TYPE_BLOB:
-        case MYSQL_TYPE_LONG_BLOB:
-        case MYSQL_TYPE_MEDIUM_BLOB:
-        case MYSQL_TYPE_TINY_BLOB:
-        case MYSQL_TYPE_ENUM: {
-          char attribute_buffer[1024];
-          String attribute(attribute_buffer, sizeof(attribute_buffer),
-                           &my_charset_bin);
-          (*field)->val_str(&attribute, &attribute);
+          case MYSQL_TYPE_GEOMETRY:
+          case MYSQL_TYPE_BLOB:
+          case MYSQL_TYPE_LONG_BLOB:
+          case MYSQL_TYPE_MEDIUM_BLOB:
+          case MYSQL_TYPE_TINY_BLOB:
+          case MYSQL_TYPE_ENUM: {
+            char attribute_buffer[1024];
+            String attribute(attribute_buffer, sizeof(attribute_buffer),
+                             &my_charset_bin);
+            (*field)->val_str(&attribute, &attribute);
 
-          kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(),
-                                                          attribute.length()).asBytes();
-          capnp::Data::Reader data(bufferPtr.begin(), bufferPtr.size());
-          row->set(capnpFieldName, data);
-          break;
-        }
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_TIME:
-        case MYSQL_TYPE_TIME2:
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-        case MYSQL_TYPE_NEWDATE: {
-          row->set(capnpFieldName, (*field)->val_int());
-          break;
+            kj::ArrayPtr<kj::byte> bufferPtr = kj::arrayPtr(attribute.c_ptr_safe(),
+                                                            attribute.length()).asBytes();
+            capnp::Data::Reader data(bufferPtr.begin(), bufferPtr.size());
+            row->set(capnpFieldName, data);
+            break;
+          }
+          case MYSQL_TYPE_DATE:
+          case MYSQL_TYPE_DATETIME:
+          case MYSQL_TYPE_DATETIME2:
+          case MYSQL_TYPE_TIME:
+          case MYSQL_TYPE_TIME2:
+          case MYSQL_TYPE_TIMESTAMP:
+          case MYSQL_TYPE_TIMESTAMP2:
+          case MYSQL_TYPE_NEWDATE: {
+            row->set(capnpFieldName, (*field)->val_int());
+            break;
+          }
         }
       }
     }
+  } catch (kj::Exception e) {
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+  } catch (const std::exception &e) {
+    // Log errors
+    std::cerr << "write error for table " << name << ": " << e.what() << std::endl;
   }
+
 }
 
 int crunch::write_buffer(uchar *buf) {
@@ -585,11 +596,12 @@ int crunch::write_buffer(uchar *buf) {
   try {
     crunchTxn *txn = (crunchTxn *) thd_get_ha_data(ha_thd(), crunch_hton);
 
+    schema schemaForMessage = capnpRowSchemas.rbegin()->second;
+
     std::shared_ptr<capnp::MallocMessageBuilder> tableRow = std::make_unique<capnp::MallocMessageBuilder>();
 
     // Use stored structure
-    capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(
-        capnpRowSchemas.rbegin()->second.schema);
+    capnp::DynamicStruct::Builder row = tableRow->initRoot<capnp::DynamicStruct>(schemaForMessage.schema);
 
     capnp::DynamicList::Builder nulls = row.init(NULL_COLUMN_FIELD, numFields).as<capnp::DynamicList>();
 
@@ -598,19 +610,18 @@ int crunch::write_buffer(uchar *buf) {
     ret = write_message(tableRow, txn);
 
     if (!ret) {
-      ret = build_and_write_indexes(tableRow, txn);
+      ret = build_and_write_indexes(tableRow, schemaForMessage, txn);
     }
-
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
-    ret = -321;
+    ret = -301;
   } catch (const std::exception &e) {
     // Log errors
     std::cerr << "write error for table " << name << ": " << e.what() << std::endl;
-    ret = 321;
+    ret = 301;
   }
 
   // Reset bitmap to original
@@ -631,9 +642,9 @@ int crunch::write_message(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
     capnp::writeMessageToFd(fd, *tableRow);
 
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
     return -322;
@@ -716,9 +727,9 @@ void crunch::position(const uchar *record) {
     memcpy(ref, &len, sizeof(uint64_t));
     memcpy(ref + sizeof(uint64_t), flatArrayOfLocation.asBytes().begin(), len);
   } catch (kj::Exception e) {
-    std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-              << ", exception_line: "
-              << e.getLine() << ", type: " << (int) e.getType()
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
   DBUG_VOID_RETURN;
@@ -1048,45 +1059,6 @@ int crunch::findTableFiles(std::string folderName) {
         }
         if (ret)
           return ret;
-      } else if (std::regex_search(extension, indexSchemaMatches, indexSchemaFileExtensionRegex)) {
-        try {
-          uint8_t indexID = std::stoi(indexSchemaMatches[1]);
-          std::string newIndexSchemaFile = it;
-          indexSchemaFiles[indexID] = newIndexSchemaFile;
-
-          // Get schema struct name from mysql filepath name
-          std::string structName = parseFileNameForIndexStructName(newIndexSchemaFile);
-          // Parse schema from what was stored during create table
-          auto capnpIndexParsedSchema = parser.parseDiskFile(structName, newIndexSchemaFile, {"/usr/include"});
-
-
-          // Get the nested structure from file, for now there is only a single struct in the schema files
-          indexSchemas[indexID] = capnpIndexParsedSchema.getNested(structName).asStruct();
-        } catch (kj::Exception e) {
-          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
-                    << __LINE__
-                    << ", exception_line: " << e.getFile() << ":"
-                    << e.getLine() << ", type: " << (int) e.getType()
-                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
-          return -1020;
-        } catch (const std::invalid_argument &e) {
-          // Log errors
-          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
-                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
-                    << ", exception: " << e.what() << std::endl;
-          return -1021;
-        } catch (const std::out_of_range &e) {
-          // Log errors
-          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
-                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
-                    << ", exception: " << e.what() << std::endl;
-          return -1022;
-        } catch (const std::exception &e) {
-          // Log errors
-          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
-                    << "errored when open file with: " << e.what() << std::endl;
-          return -1023;
-        };
       } else if (std::regex_search(extension, indexMatches, indexFileExtensionRegex)) {
         try {
 
@@ -1133,6 +1105,45 @@ int crunch::findTableFiles(std::string folderName) {
           std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
                     << "errored when open file with: " << e.what() << std::endl;
           return -1033;
+        };
+      } else if (std::regex_search(extension, indexSchemaMatches, indexSchemaFileExtensionRegex)) {
+        try {
+          uint8_t indexID = std::stoi(indexSchemaMatches[1]);
+          std::string newIndexSchemaFile = it;
+          indexSchemaFiles[indexID] = newIndexSchemaFile;
+
+          // Get schema struct name from mysql filepath name
+          std::string structName = parseFileNameForIndexStructName(newIndexSchemaFile);
+          // Parse schema from what was stored during create table
+          auto capnpIndexParsedSchema = parser.parseDiskFile(structName, newIndexSchemaFile, {"/usr/include"});
+
+
+          // Get the nested structure from file, for now there is only a single struct in the schema files
+          indexSchemas[indexID] = capnpIndexParsedSchema.getNested(structName).asStruct();
+        } catch (kj::Exception e) {
+          std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
+                    << __LINE__
+                    << ", exception_line: " << e.getFile() << ":"
+                    << e.getLine() << ", type: " << (int) e.getType()
+                    << ", e.what(): " << e.getDescription().cStr() << std::endl;
+          return -1020;
+        } catch (const std::invalid_argument &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1021;
+        } catch (const std::out_of_range &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", errored with schemaMatches[1]: " << schemaMatches[1]
+                    << ", exception: " << e.what() << std::endl;
+          return -1022;
+        } catch (const std::exception &e) {
+          // Log errors
+          std::cerr << name << ", line: " << __FILE__ << ":" << __LINE__
+                    << "errored when open file with: " << e.what() << std::endl;
+          return -1023;
         };
       }
     }

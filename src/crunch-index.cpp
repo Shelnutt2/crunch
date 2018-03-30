@@ -3,6 +3,7 @@
 ** Licensed under the GNU Lesser General Public License v3 or later
 */
 
+#include <iostream>
 #include "crunch.hpp"
 #include "utils.hpp"
 
@@ -44,11 +45,12 @@ int crunch::createIndexesFromTable(TABLE *table_arg) {
  * @param txn
  * @return status code
  */
-int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, crunchTxn *txn) {
+int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
+                                    schema schemaForMessage, crunchTxn *txn) {
 
   int rc = 0;
   for (auto index : indexSchemas) {
-    std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, index.first);
+    std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, schemaForMessage, index.first);
     rc = write_index(std::move(indexRow), txn, index.first);
     if (!rc)
       return rc;
@@ -66,7 +68,30 @@ int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder>
  * @return status code
  */
 int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID) {
+  // Use a message builder for each index row
+  try {
 
+    int fd = txn->getTransactionIndexFileDescriptor(this->name, indexID);
+    // Set the fileDescriptor to the end of the file
+    lseek(fd, 0, SEEK_END);
+    //Write message to file
+    capnp::writeMessageToFd(fd, *indexRow);
+
+  } catch (kj::Exception e) {
+    std::cerr << "exception on table " << name << " for write_index, line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    txn->isTxFailed = true;
+    return -322;
+  } catch (const std::exception &e) {
+    // Log errors
+    std::cerr << "write index error for table " << name << ": " << e.what() << std::endl;
+    txn->isTxFailed = true;
+    return 322;
+  }
+
+  return 0;
 }
 
 /**
@@ -79,7 +104,7 @@ int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, c
  */
 std::unique_ptr<capnp::MallocMessageBuilder>
 crunch::build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage,
-                    uint8_t indexID) {
+                    schema schemaForMessage, uint8_t indexID) {
   if (indexSchemas.find(indexID) == indexSchemas.end())
     return nullptr;
 
@@ -88,13 +113,15 @@ crunch::build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage
   std::unique_ptr<capnp::MallocMessageBuilder> indexRow = std::make_unique<capnp::MallocMessageBuilder>();
   capnp::DynamicStruct::Builder rowBuilder = indexRow->initRoot<capnp::DynamicStruct>(indexSchema);
 
-  capnp::DynamicStruct::Reader tableRow = capnp::FlatArrayMessageReader(
-      capnp::messageToFlatArray(tableRowMessage->getSegmentsForOutput())).getRoot<capnp::DynamicStruct>(indexSchema);
+  capnp::DynamicStruct::Builder tableRow = tableRowMessage->getRoot<capnp::DynamicStruct>(schemaForMessage.schema);
 
   for (capnp::StructSchema::Field indexField : indexSchema.getFields()) {
     auto fieldName = indexField.getProto().getName();
-    rowBuilder.set(fieldName, tableRow.get(fieldName));
-
+    if(fieldName == CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) {
+        //TODO: set row location
+    } else {
+      rowBuilder.set(fieldName, tableRow.get(fieldName).asReader());
+    }
   }
 
   return indexRow;

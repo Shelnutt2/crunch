@@ -225,7 +225,7 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
 
   }
 
-  output += "  crunchRowLocation @" + std::to_string(i) + " :CrunchRowLocation;\n";
+  output += "  " + std::string(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) + " @" + std::to_string(i) + " :CrunchRowLocation;\n";
 
   output += "}";
 
