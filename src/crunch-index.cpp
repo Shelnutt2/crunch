@@ -8,7 +8,6 @@
 #include "crunch.hpp"
 #include "utils.hpp"
 #include "crunchrowlocation.capnp.h"
-#include "../../../libmariadb/include/ma_server_error.h"
 
 /**
  * @brief Function to read all indexes and create schema files
@@ -56,10 +55,11 @@ int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder>
     // Build index
     std::unique_ptr<capnp::MallocMessageBuilder> indexRow = build_index(tableRow, schemaForMessage, index.first, txn);
     // Write index
-    std::string combinedIndexString = indexRow->getRoot<capnp::DynamicStruct>(indexSchemas[index.first])
+    ::crunchy::index index1 = indexSchemas[index.first];
+    std::string combinedIndexString = indexRow->getRoot<capnp::DynamicStruct>(index1.schema)
         .get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>().cStr();
     for(auto &indexMap : unConsolidatedIndexes) {
-      if(indexMap.second->find(combinedIndexString) != indexMap.second->end()) {
+      if(index1.indexFlags & HA_NOSAME && indexMap.second->find(combinedIndexString) != indexMap.second->end()) {
         print_keydup_error(table, &table->key_info[indexMap.first], MYF(0));
         return HA_ERR_FOUND_DUPP_KEY;
       }
@@ -122,7 +122,7 @@ crunch::build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage
     return nullptr;
 
   // Get schema of index
-  capnp::StructSchema indexSchema = indexSchemas[indexID];
+  capnp::StructSchema indexSchema = indexSchemas[indexID].schema;
 
   std::unique_ptr<capnp::MallocMessageBuilder> indexRow = std::make_unique<capnp::MallocMessageBuilder>();
   capnp::DynamicStruct::Builder rowBuilder = indexRow->initRoot<capnp::DynamicStruct>(indexSchema);
@@ -162,7 +162,7 @@ int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
   if (size > 0) {
     if(indexSchemas.find(indexStruct.indexID) == indexSchemas.end())
      return -1;
-    capnp::StructSchema schema = indexSchemas[indexStruct.indexID];
+    capnp::StructSchema schema = indexSchemas[indexStruct.indexID].schema;
       while (lseek(indexFileDescriptor, 0, SEEK_CUR) != size) {
         try {
           capnp::StreamFdMessageReader message(indexFileDescriptor);

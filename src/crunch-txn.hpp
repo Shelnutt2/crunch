@@ -12,6 +12,7 @@
 #include <map>
 #include <capnp/schema.h>
 #include "sole.hpp"
+#include "capnp-mysql.hpp"
 
 typedef struct indexDetailsForTransactionStruct {
     uint8_t indexID;
@@ -50,7 +51,7 @@ class crunchTxn {
 
 public:
       crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion,
-                std::map<uint8_t, ::capnp::StructSchema> indexes);
+                std::map<uint8_t, ::crunchy::index> indexes);
 
     ~crunchTxn();
 
@@ -63,7 +64,7 @@ public:
     int rollback();
 
     int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory,
-                         uint64_t schemaVersion, std::map<uint8_t, ::capnp::StructSchema> indexes);
+                         uint64_t schemaVersion, std::map<uint8_t, ::crunchy::index> indexes);
 
     int getTransactionDataFileDescriptor(std::string name);
 

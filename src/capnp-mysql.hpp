@@ -63,12 +63,20 @@ typedef struct data_struct {
     uint64_t schemaVersion;
 } data;
 
-typedef struct index_struct {
+typedef struct index_file_struct {
     std::string fileName;
     uint8_t indexID;
     size_t size;
     uint64_t rows;
+    ulong flags; /* dupp key and pack flags */
 } indexFile;
+
+namespace crunchy {
+    typedef struct index_struct {
+        ::capnp::StructSchema schema;
+        uint64_t indexFlags;
+    } index;
+}
 
 uint64_t generateRandomId();
 

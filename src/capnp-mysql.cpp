@@ -213,6 +213,7 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
   }
   std::string output = kj::str("@0x", kj::hex(id), ";\n").cStr();
   output += "using import \"crunchrowlocation.capnp\".CrunchRowLocation;\n\n";
+  output += "const indexFlags :UInt64 = " + std::to_string(key_info->flags)+";\n\n";
   output += "struct " + structName + " {\n";
 
 

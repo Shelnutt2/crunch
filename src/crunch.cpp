@@ -1135,8 +1135,10 @@ int crunch::findTableFiles(std::string folderName) {
           auto capnpIndexParsedSchema = parser.parseDiskFile(structName, newIndexSchemaFile, {"/usr/include"});
 
 
+          uint64_t indexFlags = capnpIndexParsedSchema.getNested(
+              "indexFlags").asConst().as<uint64_t>();
           // Get the nested structure from file, for now there is only a single struct in the schema files
-          indexSchemas[indexID] = capnpIndexParsedSchema.getNested(structName).asStruct();
+          indexSchemas[indexID] = {capnpIndexParsedSchema.getNested(structName).asStruct(), indexFlags};
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
                     << __LINE__
