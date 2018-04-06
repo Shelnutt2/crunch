@@ -58,7 +58,7 @@ int crunch::build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder>
     ::crunchy::index index1 = indexSchemas[index.first];
     std::string combinedIndexString = indexRow->getRoot<capnp::DynamicStruct>(index1.schema)
         .get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>().cStr();
-    for(auto &indexMap : unConsolidatedIndexes) {
+    for(auto &indexMap : unConsolidatedUniqueIndexes) {
       if(index1.indexFlags & HA_NOSAME && indexMap.second->find(combinedIndexString) != indexMap.second->end()) {
         print_keydup_error(table, &table->key_info[indexMap.first], MYF(0));
         return HA_ERR_FOUND_DUPP_KEY;
@@ -162,23 +162,37 @@ int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
   if (size > 0) {
     if(indexSchemas.find(indexStruct.indexID) == indexSchemas.end())
      return -1;
-    capnp::StructSchema schema = indexSchemas[indexStruct.indexID].schema;
+    crunchy::index indexSchema = indexSchemas[indexStruct.indexID];
       while (lseek(indexFileDescriptor, 0, SEEK_CUR) != size) {
         try {
           capnp::StreamFdMessageReader message(indexFileDescriptor);
-          capnp::DynamicStruct::Reader indexRow = message.getRoot<capnp::DynamicStruct>(schema);
+          capnp::DynamicStruct::Reader indexRow = message.getRoot<capnp::DynamicStruct>(indexSchema.schema);
 
-          std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>> index;
-          if(unConsolidatedIndexes.find(indexStruct.indexID) == unConsolidatedIndexes.end())
-            index = std::make_unique<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>();
-          else
-            index = std::move(unConsolidatedIndexes[indexStruct.indexID]);
+          if(indexSchema.indexFlags & HA_NOSAME) {
+            std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>> index;
+            if (unConsolidatedUniqueIndexes.find(indexStruct.indexID) == unConsolidatedUniqueIndexes.end())
+              index = std::make_unique<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>();
+            else
+              index = std::move(unConsolidatedUniqueIndexes[indexStruct.indexID]);
 
-          // TODO: check if inserted successfully
-          index->insert(std::pair<std::string, capnp::DynamicStruct::Reader>(
-              indexRow.get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>(), indexRow));
+            // TODO: check if inserted successfully
+            index->insert(std::pair<std::string, capnp::DynamicStruct::Reader>(
+                indexRow.get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>(), indexRow));
 
-          unConsolidatedIndexes[indexStruct.indexID] = std::move(index);
+            unConsolidatedUniqueIndexes[indexStruct.indexID] = std::move(index);
+          } else {
+            std::unique_ptr<btree::btree_multimap<std::string, capnp::DynamicStruct::Reader>> index;
+            if (unConsolidatedIndexes.find(indexStruct.indexID) == unConsolidatedIndexes.end())
+              index = std::make_unique<btree::btree_multimap<std::string, capnp::DynamicStruct::Reader>>();
+            else
+              index = std::move(unConsolidatedIndexes[indexStruct.indexID]);
+
+            // TODO: check if inserted successfully
+            index->insert(std::pair<std::string, capnp::DynamicStruct::Reader>(
+                indexRow.get(CRUNCH_INDEX_COMBINED_FIELD_NAME).as<capnp::Text>(), indexRow));
+
+            unConsolidatedIndexes[indexStruct.indexID] = std::move(index);
+          }
 
         } catch (kj::Exception e) {
           if (e.getDescription() != "expected n >= minBytes; Premature EOF") {

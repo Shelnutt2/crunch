@@ -192,7 +192,8 @@ private:
 
     bool checkIfColumnChangeSupportedInplace(TABLE *alteredTable);
 
-    std::map<uint8_t, std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedIndexes;
+    std::map<uint8_t, std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedUniqueIndexes;
+    std::map<uint8_t, std::unique_ptr<btree::btree_multimap<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedIndexes;
 };
 
 
