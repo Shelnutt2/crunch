@@ -35,6 +35,8 @@
 #include <btree.h>
 #include <btree_map.h>
 
+#include "key.hpp"
+
 // TODO: Figure out if this is needed, or can we void the performance schema for now?
 static PSI_mutex_key ex_key_mutex_Example_share_mutex;
 
@@ -117,9 +119,11 @@ class crunch : public handler {
 
     /* START INDEX SUPPORT */
     int createIndexesFromTable(TABLE *table_arg);
-    int build_and_write_indexes(std::shared_ptr<capnp::MallocMessageBuilder> tableRow, schema schemaForMessage, crunchTxn *txn);
+    int build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
+                                schema schemaForMessage, crunchTxn *txn);
     int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID);
-    std::unique_ptr<capnp::MallocMessageBuilder> build_index(std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
+    std::unique_ptr<capnp::MallocMessageBuilder> build_index(uchar *buf,
+                                                             std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
                                                              schema schemaForMessage, uint8_t indexID, crunchTxn *txn);
     int readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct);
     uint max_supported_keys() const override {
@@ -162,9 +166,9 @@ private:
     std::map<uint64_t, std::string> schemaFiles;
     std::string currentDataFile;
     std::vector<data> dataFiles;
-    std::map<uint, std::vector<indexFile>> indexFiles;
-    std::map<uint, std::string> indexSchemaFiles;
-    std::map<uint8_t, ::crunchy::index> indexSchemas;
+    std::map<uint64_t, std::vector<indexFile>> indexFiles;
+    std::map<uint64_t, std::string> indexSchemaFiles;
+    std::map<uint64_t, ::crunchy::index> indexSchemas;
     std::string deleteFile;
     std::string transactionDirectory;
     int schemaFileDescriptor;
@@ -192,8 +196,8 @@ private:
 
     bool checkIfColumnChangeSupportedInplace(TABLE *alteredTable);
 
-    std::map<uint8_t, std::unique_ptr<btree::btree_map<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedUniqueIndexes;
-    std::map<uint8_t, std::unique_ptr<btree::btree_multimap<std::string, capnp::DynamicStruct::Reader>>> unConsolidatedIndexes;
+    std::map<uint64_t, std::unique_ptr<crunchy::crunchUniqueIndexMap>> unConsolidatedUniqueIndexes;
+    std::map<uint64_t, std::unique_ptr<crunchy::crunchIndexMap>> unConsolidatedIndexes;
 };
 
 

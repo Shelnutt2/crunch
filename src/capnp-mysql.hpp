@@ -50,7 +50,7 @@ struct CrunchRowLocation{\n\
 
 #define CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME "crunchRowLocation"
 
-#define CRUNCH_INDEX_COMBINED_FIELD_NAME "crunchIndexCombined"
+#define CRUNCH_INDEX_KEY_FIELD_NAME "crunchIndexKey"
 
 typedef struct schema_struct {
     ::capnp::StructSchema schema;
@@ -65,10 +65,9 @@ typedef struct data_struct {
 
 typedef struct index_file_struct {
     std::string fileName;
-    uint8_t indexID;
+    uint64_t indexID;
     size_t size;
     uint64_t rows;
-    ulong flags; /* dupp key and pack flags */
 } indexFile;
 
 namespace crunchy {

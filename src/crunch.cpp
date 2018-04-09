@@ -389,7 +389,7 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
   try {
     uint64_t len;
     memcpy(&len, pos, sizeof(uint64_t));
-    kj::ArrayPtr<const unsigned char> bytes = kj::arrayPtr(pos + sizeof(uint64_t), len);
+    capnp::Data::Reader bytes = kj::arrayPtr(pos + sizeof(uint64_t), len);
 
     const kj::ArrayPtr<const capnp::word> view{
         reinterpret_cast<const capnp::word *>(bytes.begin()),
@@ -609,7 +609,7 @@ int crunch::write_buffer(uchar *buf) {
     build_row(&row, &nulls);
 
     if (!ret) {
-      ret = build_and_write_indexes(tableRow, schemaForMessage, txn);
+      ret = build_and_write_indexes(buf, tableRow, schemaForMessage, txn);
     }
     if(!ret)
       ret = write_message(tableRow, txn);
@@ -1067,7 +1067,7 @@ int crunch::findTableFiles(std::string folderName) {
         try {
 
           bool fileExists = false;
-          uint8_t indexID = std::stoi(indexMatches[1]);
+          uint64_t indexID = std::stoul(indexMatches[1]);
           std::string newIndexFile = it;
           if (indexFiles.find(indexID) != indexFiles.end()) {
             for (auto existingFile : indexFiles[indexID]) {
@@ -1084,7 +1084,7 @@ int crunch::findTableFiles(std::string folderName) {
             indexFile indexStruct = {newIndexFile, // Filename
                                      indexID, // Index ID
                                      getFilesize(newIndexFile.c_str()), // Size
-                                     0 // Number of rows
+                                     0, // Number of rows
             };
             indexFiles[indexID].push_back(indexStruct);
             //Open crunch index File

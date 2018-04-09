@@ -217,7 +217,7 @@ buildCapnpIndexSchema(KEY *key_info, std::string structName, int *err, uint64_t 
   output += "struct " + structName + " {\n";
 
 
-  output += "  " + std::string(CRUNCH_INDEX_COMBINED_FIELD_NAME) + " @0 :Text;\n";
+  output += "  " + std::string(CRUNCH_INDEX_KEY_FIELD_NAME) + " @0 :Text;\n";
   output += "  " + std::string(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) + " @1 :CrunchRowLocation;\n";
   uint i = 0;
   for (i = NON_MYSQL_INDEX_FIELD_COUNT; i < key_info->user_defined_key_parts; i++) {

@@ -14,7 +14,7 @@
  * @param schemaVersion
  */
 crunchTxn::crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory,
-                     uint64_t schemaVersion, std::map<uint8_t, ::crunchy::index> indexes) {
+                     uint64_t schemaVersion, std::map<uint64_t, ::crunchy::index> indexes) {
   this->isTxFailed = false;
   this->tablesInUse = 0;
 
@@ -46,7 +46,7 @@ crunchTxn::~crunchTxn() {
  * @return
  */
 int crunchTxn::registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory,
-                                uint64_t schemaVersion, std::map<uint8_t, ::crunchy::index> indexes) {
+                                uint64_t schemaVersion, std::map<uint64_t, ::crunchy::index> indexes) {
   // If table already exists don't re-register it
   if (this->tables.find(name) != this->tables.end()) {
     return 0;

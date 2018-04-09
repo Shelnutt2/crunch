@@ -51,7 +51,7 @@ class crunchTxn {
 
 public:
       crunchTxn(std::string name, std::string dataDirectory, std::string transactionDirectory, uint64_t schemaVersion,
-                std::map<uint8_t, ::crunchy::index> indexes);
+                std::map<uint64_t, ::crunchy::index> indexes);
 
     ~crunchTxn();
 
@@ -64,7 +64,7 @@ public:
     int rollback();
 
     int registerNewTable(std::string name, std::string dataDirectory, std::string transactionDirectory,
-                         uint64_t schemaVersion, std::map<uint8_t, ::crunchy::index> indexes);
+                         uint64_t schemaVersion, std::map<uint64_t, ::crunchy::index> indexes);
 
     int getTransactionDataFileDescriptor(std::string name);
 
