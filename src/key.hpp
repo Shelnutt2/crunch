@@ -28,6 +28,14 @@ namespace crunchy {
         std::memcpy(this->key_data.get(), k2.key_data.get(), k2.key_info.key_length);
       }
 
+      // Move constructor
+      key(key&& other) noexcept
+      {
+        this->key_data = std::move(other.key_data);
+        other.key_data = nullptr;
+        this->key_info = other.key_info;
+      }
+
       ~key() {};
 
       /**
@@ -78,6 +86,22 @@ namespace crunchy {
         return CmpKeys(this->key_data.get(), b.key_data.get(), &this->key_info) >= 0;
       };
 
+      // assignment operator
+      key& operator=(const key& rhs) {
+        if (&rhs != this) {
+          key tmp(rhs);
+          std::swap(*this, tmp);
+        }
+        return *this;
+      }
+
+      // move assignment operator
+      key& operator=(key&& rhs) noexcept {
+        std::swap(this->key_data, rhs.key_data);
+        std::swap(this->key_info, rhs.key_info);
+        return *this;
+      }
+
   private:
       friend std::ostream &operator<<(std::ostream &strm, const key &k) {
         for (uint i = 0; i < k.key_info.key_length; i++) {
@@ -90,8 +114,8 @@ namespace crunchy {
       KEY key_info;
   };
 
-  typedef std::map<crunchy::key, capnp::DynamicStruct::Reader> crunchUniqueIndexMap;
-  typedef std::multimap<crunchy::key, capnp::DynamicStruct::Reader> crunchIndexMap;
+  typedef btree::btree_map<crunchy::key, capnp::DynamicStruct::Reader> crunchUniqueIndexMap;
+  typedef btree::btree_multimap<crunchy::key, capnp::DynamicStruct::Reader> crunchIndexMap;
 }
 
 
