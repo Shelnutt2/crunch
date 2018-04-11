@@ -104,6 +104,9 @@ class crunch : public handler {
     int start_stmt(THD *thd, thr_lock_type lock_type);
     static int disconnect(handlerton *hton, MYSQL_THD thd);
 
+    // Public findTableFiles for use in txn commit
+    int findTableFiles(){return findTableFiles(name);};
+
     // Optimize Table
     int optimize(THD* thd, HA_CHECK_OPT* check_opt);
 

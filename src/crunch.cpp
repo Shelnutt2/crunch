@@ -852,6 +852,8 @@ int crunch::external_lock(THD *thd, int lock_type) {
           }
           thd_set_ha_data(thd, crunch_hton, NULL);
           delete txn;
+          if (!rc)
+            rc = findTableFiles(name);
         }
       }
     }
@@ -918,6 +920,9 @@ int crunch::consolidateFiles() {
       } else {
         perror("Error in symlinking");
       }
+
+      if(!res)
+        res = findTableFiles(name);
     }
   } catch (kj::Exception e) {
     std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
@@ -1685,6 +1690,9 @@ static int crunch_commit(handlerton *hton, THD *thd, bool all) {
       ret = txn->commitOrRollback();
       thd_set_ha_data(thd, hton, NULL);
       delete txn;
+
+      if(!ret)
+        ret = ((crunch *)hton)->findTableFiles();
     }
   }
 
