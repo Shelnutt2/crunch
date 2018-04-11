@@ -58,8 +58,6 @@ int crunch::build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMes
         build_index(buf, tableRow, schemaForMessage, index.first, txn);
     // Write index
     ::crunchy::index index1 = indexSchemas[index.first];
-/*    StringPtr &indexKey = indexRow->getRoot<capnp::DynamicStruct>(index1.schema)
-                .get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asString();*/
 
         crunchy::key indexKey(indexRow->getRoot<capnp::DynamicStruct>(index1.schema).get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
                      table->key_info[index.first]);
@@ -71,7 +69,7 @@ int crunch::build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMes
       }
     }
     rc = write_index(std::move(indexRow), txn, index.first);
-    if (!rc)
+    if (rc)
       return rc;
   }
 
@@ -86,7 +84,8 @@ int crunch::build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMes
  * @param txn
  * @return status code
  */
-int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID) {
+int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint64_t indexID) {
+  DBUG_ENTER("write_index");
   // Use a message builder for each index row
   try {
 
@@ -102,15 +101,15 @@ int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, c
               << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
     txn->isTxFailed = true;
-    return -322;
+    DBUG_RETURN(-322);
   } catch (const std::exception &e) {
     // Log errors
     std::cerr << "write index error for table " << name << ": " << e.what() << std::endl;
     txn->isTxFailed = true;
-    return 322;
+    DBUG_RETURN(322);
   }
 
-  return 0;
+  DBUG_RETURN(0);
 }
 
 /**
@@ -123,7 +122,7 @@ int crunch::write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, c
  */
 std::unique_ptr<capnp::MallocMessageBuilder>
 crunch::build_index(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tableRowMessage,
-                    schema schemaForMessage, uint8_t indexID, crunchTxn *txn) {
+                    schema schemaForMessage, uint64_t indexID, crunchTxn *txn) {
   if (indexSchemas.find(indexID) == indexSchemas.end())
     return nullptr;
 
@@ -185,6 +184,8 @@ int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
           crunchy::key keyToAdd(indexRow.get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
                                             table->key_info[indexStruct.indexID]);
           auto insertedPair = index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
+          if(!insertedPair.second)
+            return -2;
 
         } else {
           std::unique_ptr<crunchy::crunchIndexMap>& index = unConsolidatedIndexes[indexStruct.indexID];
@@ -195,13 +196,13 @@ int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
           // TODO: check if inserted successfully
           crunchy::key keyToAdd(indexRow.get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
                                 table->key_info[indexStruct.indexID]);
-          auto insertedPair = index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
+          index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
         }
 
       } catch (kj::Exception e) {
         if (e.getDescription() != "expected n >= minBytes; Premature EOF") {
-          std::cerr << "exception: " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
-                    << ", exception_line: "
+          std::cerr << "exception: " << ", line: " << __FILE__ << ":" << __LINE__
+                    << ", exception_line: " << e.getFile() << ":"
                     << e.getLine() << ", type: " << (int) e.getType()
                     << ", e.what(): " << e.getDescription().cStr() << std::endl;
           return -1;

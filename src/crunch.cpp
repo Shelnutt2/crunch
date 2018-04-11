@@ -924,6 +924,10 @@ int crunch::consolidateFiles() {
       if(!res)
         res = findTableFiles(name);
     }
+
+    if(!res) {
+      res = findTableFiles(name);
+    }
   } catch (kj::Exception e) {
     std::cerr << "close exception for table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
               << __LINE__ << ", exception_line: "
@@ -942,6 +946,9 @@ int crunch::consolidateFiles() {
 int crunch::findTableFiles(std::string folderName) {
   //Loop through all files in directory of folder and find all files matching extension, add to maps
   std::vector<std::string> files_in_directory = readDirectory(folderName);
+
+  stats.data_file_length = 0;
+  stats.deleted = 0;
 
   int ret = 0;
 
@@ -977,6 +984,7 @@ int crunch::findTableFiles(std::string folderName) {
           if (!fileExists) {
             data dataStruct = {newDataFile, schema_version};
             dataFiles.push_back(dataStruct);
+            stats.data_file_length += getFilesize(newDataFile.c_str());
           }
         } catch (kj::Exception e) {
           std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":"
@@ -1130,8 +1138,9 @@ int crunch::findTableFiles(std::string folderName) {
           return -1033;
         };
       } else if (std::regex_search(extension, indexSchemaMatches, indexSchemaFileExtensionRegex)) {
+
         try {
-          uint8_t indexID = std::stoi(indexSchemaMatches[1]);
+          uint64_t indexID = std::stoul(indexSchemaMatches[1]);
           std::string newIndexSchemaFile = it;
           indexSchemaFiles[indexID] = newIndexSchemaFile;
 
@@ -1173,6 +1182,9 @@ int crunch::findTableFiles(std::string folderName) {
       }
     }
   }
+
+  for(auto it : deleteMap)
+    stats.deleted += it.second->size();
   return ret;
 }
 
@@ -1671,6 +1683,124 @@ void crunch::notify_table_changed() {
   DBUG_VOID_RETURN;
 }
 
+ha_rows crunch::records_in_range(uint indexID, key_range *min_key, key_range *max_key) {
+  DBUG_ENTER("crunch::records_in_range");
+  ha_rows records = 0;
+  crunchy::key crunchMinKey(min_key->key, table->key_info[indexID]);
+  crunchy::key crunchMaxKey(max_key->key, table->key_info[indexID]);
+
+  if (indexSchemas.find(indexID) == indexSchemas.end())
+    DBUG_RETURN(HA_POS_ERROR);
+
+  if(indexSchemas[indexID].indexFlags & HA_NOSAME) {
+    if(unConsolidatedUniqueIndexes.find(indexID) == unConsolidatedUniqueIndexes.end())
+      DBUG_RETURN(HA_POS_ERROR);
+    auto &index = unConsolidatedUniqueIndexes[indexID];
+
+    auto minIt = index->find(crunchMinKey);
+    if(minIt == index->end())
+      DBUG_RETURN(HA_POS_ERROR);
+
+    if(min_key->flag == HA_READ_AFTER_KEY)
+      minIt++;
+
+    auto maxIt = index->find(crunchMaxKey);
+    if(maxIt == index->end())
+      DBUG_RETURN(HA_POS_ERROR);
+
+    if(max_key->flag == HA_READ_BEFORE_KEY)
+      maxIt--;
+
+    records = std::distance(minIt, maxIt);
+  } else {
+    if(unConsolidatedIndexes.find(indexID) == unConsolidatedIndexes.end())
+      DBUG_RETURN(HA_POS_ERROR);
+
+    auto &index = unConsolidatedIndexes[indexID];
+
+    auto minIt = index->find(crunchMinKey);
+    if(minIt == index->end())
+      DBUG_RETURN(HA_POS_ERROR);
+
+    if(min_key->flag == HA_READ_AFTER_KEY)
+      minIt++;
+
+    auto maxIt = index->find(crunchMaxKey);
+    if(maxIt == index->end())
+      DBUG_RETURN(HA_POS_ERROR);
+
+    if(max_key->flag == HA_READ_BEFORE_KEY)
+      maxIt--;
+
+    records = std::distance(minIt, maxIt);
+  }
+  std::cerr << records << " records in key " << indexID << std::endl;
+  DBUG_RETURN(records);
+}
+
+/*int crunch::index_read(uchar * buf, const uchar * key, uint key_len, enum ha_rkey_function find_flag) {
+  DBUG_ENTER("crunch::index_read");
+
+  DBUG_RETURN(0);
+}
+
+int crunch::index_read_last(uchar * buf, const uchar * key, key_part_map keypart_map) {
+  DBUG_ENTER("crunch::index_read_last");
+
+  DBUG_RETURN(0);
+}
+ */
+
+int crunch::index_read_map(uchar * buf, const uchar * key, key_part_map keypart_map,
+                   enum ha_rkey_function find_flag){
+  DBUG_ENTER("crunch::index_read_map");
+
+  DBUG_RETURN(0);
+}
+int crunch::index_read_idx_map(uchar * buf, uint idx, const uchar * key,
+                       key_part_map keypart_map,
+                       enum ha_rkey_function find_flag){
+  DBUG_ENTER("crunch::index_read_idx_map");
+
+  DBUG_RETURN(0);
+}
+int crunch::index_read_last_map(uchar * buf, const uchar * key,
+                        key_part_map keypart_map){
+  DBUG_ENTER("crunch::index_read_last_map");
+
+  DBUG_RETURN(0);
+}
+
+int crunch::index_next(uchar * buf) {
+  DBUG_ENTER("crunch::index_next");
+
+  DBUG_RETURN(0);
+};
+
+int crunch::index_prev(uchar * buf) {
+  DBUG_ENTER("crunch::index_prev");
+
+  DBUG_RETURN(0);
+};
+
+int crunch::index_first(uchar * buf) {
+  DBUG_ENTER("crunch::index_first");
+
+  DBUG_RETURN(0);
+};
+
+int crunch::index_last(uchar * buf) {
+  DBUG_ENTER("crunch::index_last");
+
+  DBUG_RETURN(0);
+};
+
+int crunch::index_next_same(uchar * buf, const uchar * key, uint keylen) {
+  DBUG_ENTER("crunch::index_next_same");
+
+  DBUG_RETURN(0);
+}
+
 int crunch::disconnect(handlerton *hton, MYSQL_THD thd) {
   DBUG_ENTER("crunch::disconnect");
   crunchTxn *txn = (crunchTxn *) thd_get_ha_data(thd, hton);
@@ -1696,7 +1826,7 @@ static int crunch_commit(handlerton *hton, THD *thd, bool all) {
     }
   }
 
-  if (!ret)
+  if (ret)
     DBUG_PRINT("info", ("error val: %d", ret));
   DBUG_RETURN(ret);
 }

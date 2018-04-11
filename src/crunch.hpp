@@ -121,13 +121,36 @@ class crunch : public handler {
     /* END INPLACE ALTER TABLE SUPPORT*/
 
     /* START INDEX SUPPORT */
+    ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key);
+    /*int index_read(uchar * buf, const uchar * key, uint key_len, enum ha_rkey_function find_flag);
+    int index_read_idx(uchar * buf, uint keynr, const uchar * key, ulonglong keypart_map,
+                       enum ha_rkey_function find_flag);
+    int index_read_last(uchar * buf, const uchar * key, key_part_map keypart_map);
+    int index_next(uchar * buf);
+    int index_prev(uchar * buf);
+    int index_first(uchar * buf);
+    int index_last(uchar * buf);*/
+
+    int index_read_map(uchar * buf, const uchar * key, key_part_map keypart_map,
+                       enum ha_rkey_function find_flag);
+    int index_read_idx_map(uchar * buf, uint idx, const uchar * key,
+                           key_part_map keypart_map,
+                           enum ha_rkey_function find_flag);
+    int index_read_last_map(uchar * buf, const uchar * key,
+                            key_part_map keypart_map);
+    int index_next(uchar * buf);
+    int index_prev(uchar * buf);
+    int index_first(uchar * buf);
+    int index_last(uchar * buf);
+    int index_next_same(uchar * buf, const uchar * key, uint keylen);
+
     int createIndexesFromTable(TABLE *table_arg);
     int build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
                                 schema schemaForMessage, crunchTxn *txn);
-    int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint8_t indexID);
+    int write_index(std::unique_ptr<capnp::MallocMessageBuilder> indexRow, crunchTxn *txn, uint64_t indexID);
     std::unique_ptr<capnp::MallocMessageBuilder> build_index(uchar *buf,
                                                              std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
-                                                             schema schemaForMessage, uint8_t indexID, crunchTxn *txn);
+                                                             schema schemaForMessage, uint64_t indexID, crunchTxn *txn);
     int readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct);
     uint max_supported_keys() const override {
       DBUG_ENTER("crunch::max_supported_keys");
@@ -141,7 +164,6 @@ class crunch : public handler {
       DBUG_RETURN(MAX_REF_PARTS);
     }
     /* END INDEX SUPPORT */
-
 private:
 
     bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
