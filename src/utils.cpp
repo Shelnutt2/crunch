@@ -247,3 +247,86 @@ kj::StringPtr dynamicValueToString(capnp::DynamicValue::Reader value) {
   }
   return valString;
 }
+
+/**
+ * Count number of leading zeros
+ * @param val to count leading zeros of
+ * @return leading zeros
+ */
+int clzl(unsigned long val) {
+  return __builtin_clz(val);
+}
+
+void dynamicPrintValue(capnp::DynamicValue::Reader value) {
+  // Print an arbitrary message via the dynamic API by
+  // iterating over the schema.  Look at the handling
+  // of STRUCT in particular.
+
+  switch (value.getType()) {
+    case capnp::DynamicValue::VOID:
+      std::cout << "";
+      break;
+    case capnp::DynamicValue::BOOL:
+      std::cout << (value.as<bool>() ? "true" : "false");
+      break;
+    case capnp::DynamicValue::INT:
+      std::cout << value.as<int64_t>();
+      break;
+    case capnp::DynamicValue::UINT:
+      std::cout << value.as<uint64_t>();
+      break;
+    case capnp::DynamicValue::FLOAT:
+      std::cout << value.as<double>();
+      break;
+    case capnp::DynamicValue::TEXT:
+      std::cout << '\"' << value.as<capnp::Text>().cStr() << '\"';
+      break;
+    case capnp::DynamicValue::LIST: {
+      std::cout << "[";
+      bool first = true;
+      for (auto element: value.as<capnp::DynamicList>()) {
+        if (first) {
+          first = false;
+        } else {
+          std::cout << ", ";
+        }
+        dynamicPrintValue(element);
+      }
+      std::cout << "]";
+      break;
+    }
+    case capnp::DynamicValue::ENUM: {
+      auto enumValue = value.as<capnp::DynamicEnum>();
+      KJ_IF_MAYBE(enumerant, enumValue.getEnumerant()) {
+        std::cout <<
+                  enumerant->getProto().getName().cStr();
+      } else {
+        // Unknown enum value; output raw number.
+        std::cout << enumValue.getRaw();
+      }
+      break;
+    }
+    case capnp::DynamicValue::STRUCT: {
+      std::cout << "(";
+      auto structValue = value.as<capnp::DynamicStruct>();
+      bool first = true;
+      for (auto field: structValue.getSchema().getFields()) {
+        if (!structValue.has(field)) continue;
+        if (first) {
+          first = false;
+        } else {
+          std::cout << ", ";
+        }
+        std::cout << field.getProto().getName().cStr()
+                  << " = ";
+        dynamicPrintValue(structValue.get(field));
+      }
+      std::cout << ")";
+      break;
+    }
+    default:
+      // There are other types, we aren't handling them.
+      std::cout << "?";
+      break;
+  }
+}

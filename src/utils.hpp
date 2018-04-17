@@ -78,4 +78,8 @@ int isFdValid(int fd);
 std::string determineSymLink(std::string file);
 
 kj::StringPtr dynamicValueToString(capnp::DynamicValue::Reader val);
+
+
+int clzl(unsigned long val);
+void dynamicPrintValue(capnp::DynamicValue::Reader value);
 #endif //CRUNCH_UTILS_HPP

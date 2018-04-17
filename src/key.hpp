@@ -8,6 +8,7 @@
 #pragma once
 
 #include <key.h>
+#include "utils.hpp"
 
 namespace crunchy {
   class key {
@@ -19,6 +20,14 @@ namespace crunchy {
         this->key_data = std::unique_ptr<uchar[]>(new uchar[key_info.key_length]);
         std::memcpy(this->key_data.get(), (void *) key_data, key_info.key_length);
         this->key_info = key_info;
+      }
+
+      key(const uchar *key_data, KEY key_info, key_part_map keypart_map) : key(key_data, key_info){
+        // Currently the key_part_map only supports prefixes (mariadb/mysql limitation)
+        // thus we can find the most significant bit to determine the number of keys present
+        uint parts = 64 - clzl(keypart_map);
+        // Next we modify the key info for this;
+        key_info.user_defined_key_parts=parts;
       }
 
       // Copy constructor
@@ -46,7 +55,6 @@ namespace crunchy {
        */
       static int CmpKeys(const uchar *key0, const uchar *key1, const KEY *key_info) {
         int res = 0;
-
         for (size_t i = 0; i < key_info->user_defined_key_parts && !res; i++) {
           const auto &keyPart = key_info->key_part[i];
           const int off = (keyPart.null_bit ? 1 : 0); // to step over null-byte
@@ -116,6 +124,8 @@ namespace crunchy {
 
   typedef btree::btree_map<crunchy::key, capnp::DynamicStruct::Reader> crunchUniqueIndexMap;
   typedef btree::btree_multimap<crunchy::key, capnp::DynamicStruct::Reader> crunchIndexMap;
+  //typedef std::map<crunchy::key, capnp::DynamicStruct::Reader> crunchUniqueIndexMap;
+  //typedef std::multimap<crunchy::key, capnp::DynamicStruct::Reader> crunchIndexMap;
 }
 
 

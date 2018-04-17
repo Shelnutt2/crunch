@@ -157,7 +157,7 @@ bool crunch::mremapData(std::string fileName) {
 #endif
 }
 
-bool crunch::capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader dynamicStructReader) {
+bool crunch::capnpDataToMysqlBuffer(capnp::DynamicStruct::Reader dynamicStructReader) {
   bool ret = true;
   try {
     //Get nulls
@@ -356,7 +356,7 @@ int crunch::rnd_next(uchar *buf) {
           }
         }
 
-        if (!rc && !capnpDataToMysqlBuffer(buf, rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
+        if (!rc && !capnpDataToMysqlBuffer(rowRead->getRoot<capnp::DynamicStruct>(capnpRowSchema.schema)))
           rc = -45;
       }
     }
@@ -383,9 +383,6 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
   int rc = 0;
   DBUG_ENTER("crunch::rnd_pos");
 
-  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
-  my_bitmap_map *orig = dbug_tmp_use_all_columns(table, table->write_set);
-
   try {
     uint64_t len;
     memcpy(&len, pos, sizeof(uint64_t));
@@ -397,81 +394,99 @@ int crunch::rnd_pos(uchar *buf, uchar *pos) {
 
     capnp::FlatArrayMessageReader message(view);
     CrunchRowLocation::Reader rowLocation = message.getRoot<CrunchRowLocation>();
-    if (currentDataFile != std::string(rowLocation.getFileName().cStr())) {
-      DBUG_PRINT("info", ("rnd_pos is in different file"));
-      unmmapData();
-      for (unsigned long i = 0; i < dataFiles.size(); i++) {
-        if (dataFiles[i].fileName == std::string(rowLocation.getFileName().cStr())) {
-          dataFileIndex = i;
-          break;
-        }
-      }
-      data dataStruct = dataFiles[dataFileIndex];
-      DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
-      mmapData(dataStruct.fileName);
-      capnpRowSchema = capnpRowSchemas.rbegin()->second;
-      dataPointer = dataFileStart;
-      dataPointerNext = dataFileStart;
-    }
-    dataPointer = dataFileStart + rowLocation.getRowStartLocation();
-    if (!checkForDeletedRow(rowLocation.getFileName().cStr(), rowLocation.getRowStartLocation())) {
-      auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(
-          new capnp::FlatArrayMessageReader(
-              kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
-      try {
-        if (!rc) {
-          if (tmpDataMessageReader == nullptr) {
-            rc = -51;
-          } else {
-            uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
-            if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
-              schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
-              for (auto schemaIt = capnpRowSchemas.rbegin();
-                   schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
-                if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
-                  maxCompatibleSchema = schemaIt->second;
-                  break;
-                }
-              }
-              auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader),
-                                                      maxCompatibleSchema,
-                                                      capnpRowSchema);
-              if (newMessage == nullptr)
-                rc = -52;
-              else
-                tmpDataMessageReader = std::make_unique<capnp::FlatArrayMessageReader>(
-                    capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
-
-            }
-
-            if (!rc && !capnpDataToMysqlBuffer(buf,
-                                               tmpDataMessageReader->getRoot<capnp::DynamicStruct>(
-                                                   capnpRowSchema.schema)))
-              rc = -53;
-          }
-        }
-      } catch (kj::Exception &e) {
-        std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
-                  << __LINE__
-                  << ", exception_line: "
-                  << e.getLine() << ", type: " << (int) e.getType()
-                  << ", e.what(): " << e.getDescription().cStr() << std::endl;
-        rc = -54;
-      } catch (std::exception &e) {
-        std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__
-                  << ", e.what(): "
-                  << e.what() << std::endl;
-        rc = -55;
-      }
-    } else {
-      rc = HA_ERR_RECORD_DELETED;
-    }
+    rc = rnd_pos(rowLocation);
   } catch (kj::Exception e) {
     std::cerr << "exception on table " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":" << __LINE__
               << ", exception_line: "
               << e.getLine() << ", type: " << (int) e.getType()
               << ", e.what(): " << e.getDescription().cStr() << std::endl;
   };
+  DBUG_RETURN(rc);
+}
+
+int crunch::rnd_pos(CrunchRowLocation::Reader rowLocation) {
+  DBUG_ENTER("crunch::rnd_pos");
+  DBUG_RETURN(rnd_pos(rowLocation.getFileName(), rowLocation.getRowStartLocation()));
+}
+
+int crunch::rnd_pos(capnp::DynamicStruct::Reader rowLocation) {
+  DBUG_ENTER("crunch::rnd_pos");
+  DBUG_RETURN(rnd_pos(rowLocation.get("fileName").as<capnp::Text>().cStr(), rowLocation.get("rowStartLocation").as<uint64_t>()));
+}
+int crunch::rnd_pos(std::string fileName, uint64_t rowStartlocation) {
+  int rc = 0;
+  DBUG_ENTER("crunch::rnd_pos");
+
+  // We must set the bitmap for debug purpose, it is "write_set" because we use Field->store
+  my_bitmap_map *orig = dbug_tmp_use_all_columns(table, table->write_set);
+  if (currentDataFile != fileName) {
+    DBUG_PRINT("info", ("rnd_pos is in different file"));
+    unmmapData();
+    for (unsigned long i = 0; i < dataFiles.size(); i++) {
+      if (dataFiles[i].fileName == fileName) {
+        dataFileIndex = i;
+        break;
+      }
+    }
+    data dataStruct = dataFiles[dataFileIndex];
+    DBUG_PRINT("info", ("Next file in rnd_next: %s", dataStruct.fileName.c_str()));
+    mmapData(dataStruct.fileName);
+    capnpRowSchema = capnpRowSchemas.rbegin()->second;
+    dataPointer = dataFileStart;
+    dataPointerNext = dataFileStart;
+  }
+  dataPointer = dataFileStart + rowStartlocation;
+  if (!checkForDeletedRow(fileName, rowStartlocation)) {
+    auto tmpDataMessageReader = std::unique_ptr<capnp::FlatArrayMessageReader>(
+        new capnp::FlatArrayMessageReader(
+            kj::ArrayPtr<const capnp::word>(dataPointer, dataPointer + (dataFileSize / sizeof(capnp::word)))));
+    try {
+      if (!rc) {
+        if (tmpDataMessageReader == nullptr) {
+          rc = -51;
+        } else {
+          uint64_t fileSchemaVersion = dataFiles[dataFileIndex].schemaVersion;
+          if (fileSchemaVersion < capnpRowSchema.minimumCompatibleSchemaVersion) {
+            schema maxCompatibleSchema = capnpRowSchemas[fileSchemaVersion];
+            for (auto schemaIt = capnpRowSchemas.rbegin();
+                 schemaIt != capnpRowSchemas.rend(); ++schemaIt) {
+              if (schemaIt->second.minimumCompatibleSchemaVersion <= fileSchemaVersion) {
+                maxCompatibleSchema = schemaIt->second;
+                break;
+              }
+            }
+            auto newMessage = updateMessageToSchema(std::move(tmpDataMessageReader),
+                                                    maxCompatibleSchema,
+                                                    capnpRowSchema);
+            if (newMessage == nullptr)
+              rc = -52;
+            else
+              tmpDataMessageReader = std::make_unique<capnp::FlatArrayMessageReader>(
+                  capnp::messageToFlatArray(newMessage->getSegmentsForOutput()).asPtr());
+
+          }
+
+          if (!rc && !capnpDataToMysqlBuffer(tmpDataMessageReader->getRoot<capnp::DynamicStruct>(
+                                                 capnpRowSchema.schema)))
+            rc = -53;
+        }
+      }
+    } catch (kj::Exception &e) {
+      std::cerr << "exception on rnd_next " << name << ": " << e.getFile() << ", line: " << __FILE__ << ":"
+                << __LINE__
+                << ", exception_line: "
+                << e.getLine() << ", type: " << (int) e.getType()
+                << ", e.what(): " << e.getDescription().cStr() << std::endl;
+      rc = -54;
+    } catch (std::exception &e) {
+      std::cerr << "exception on rnd_next " << name << ", line: " << __FILE__ << ":" << __LINE__
+                << ", e.what(): "
+                << e.what() << std::endl;
+      rc = -55;
+    }
+  } else {
+    rc = HA_ERR_RECORD_DELETED;
+  }
   // Reset bitmap to original
   dbug_tmp_restore_column_map(table->write_set, orig);
   DBUG_RETURN(rc);
@@ -611,7 +626,7 @@ int crunch::write_buffer(uchar *buf) {
     if (!ret) {
       ret = build_and_write_indexes(buf, tableRow, schemaForMessage, txn);
     }
-    if(!ret)
+    if (!ret)
       ret = write_message(tableRow, txn);
   } catch (kj::Exception e) {
     std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
@@ -679,7 +694,7 @@ int crunch::delete_row(const uchar *buf) {
   //crunch-delete will create file if not exists and serialize with capnproto
   uint64_t rowStartLocation = (dataPointer - dataFileStart);
   uint64_t rowEndLocation = (dataPointerNext - dataFileStart);
-  char* buff = new char[currentDataFile.size()+1];
+  char *buff = new char[currentDataFile.size() + 1];
   strcpy(buff, currentDataFile.c_str());
   markRowAsDeleted(basename(buff), rowStartLocation, rowEndLocation);
 
@@ -921,11 +936,11 @@ int crunch::consolidateFiles() {
         perror("Error in symlinking");
       }
 
-      if(!res)
+      if (!res)
         res = findTableFiles(name);
     }
 
-    if(!res) {
+    if (!res) {
       res = findTableFiles(name);
     }
   } catch (kj::Exception e) {
@@ -953,6 +968,15 @@ int crunch::findTableFiles(std::string folderName) {
   int ret = 0;
 
   dataFiles.clear();
+  unConsolidatedUniqueIndexes.clear();
+  unConsolidatedIndexes.clear();
+  schemaFiles.clear();
+  indexSchemaFiles.clear();
+  indexFiles.clear();
+//  indexSchemas.clear();
+  capnpParsedSchemas.clear();
+  capnpRowSchemas.clear();
+  deleteMap.clear();
 
   for (auto it : files_in_directory) {
     //std::cout << "found file: " << it << " in dir: " << folderName <<std::endl;
@@ -1091,7 +1115,7 @@ int crunch::findTableFiles(std::string folderName) {
             }
           }
           if (!fileExists) {
-            char* buff = new char[newIndexFile.size()+1];
+            char *buff = new char[newIndexFile.size() + 1];
             strcpy(buff, newIndexFile.c_str());
             newIndexFile = basename(buff);
             indexFile indexStruct = {newIndexFile, // Filename
@@ -1104,7 +1128,7 @@ int crunch::findTableFiles(std::string folderName) {
             int indexFileDescriptor = my_open(it.c_str(), mode, 0);
             ret = readIndexIntoBTree(indexFileDescriptor, indexStruct);
             if (ret)
-              return ret ;
+              return ret;
             if (isFdValid(indexFileDescriptor)) {
               ret = my_close(indexFileDescriptor, 0);
               indexFileDescriptor = 0;
@@ -1183,7 +1207,7 @@ int crunch::findTableFiles(std::string folderName) {
     }
   }
 
-  for(auto it : deleteMap)
+  for (auto it : deleteMap)
     stats.deleted += it.second->size();
   return ret;
 }
@@ -1692,44 +1716,44 @@ ha_rows crunch::records_in_range(uint indexID, key_range *min_key, key_range *ma
   if (indexSchemas.find(indexID) == indexSchemas.end())
     DBUG_RETURN(HA_POS_ERROR);
 
-  if(indexSchemas[indexID].indexFlags & HA_NOSAME) {
-    if(unConsolidatedUniqueIndexes.find(indexID) == unConsolidatedUniqueIndexes.end())
+  if (indexSchemas[indexID].indexFlags & HA_NOSAME) {
+    if (unConsolidatedUniqueIndexes.find(indexID) == unConsolidatedUniqueIndexes.end())
       DBUG_RETURN(HA_POS_ERROR);
     auto &index = unConsolidatedUniqueIndexes[indexID];
 
     auto minIt = index->find(crunchMinKey);
-    if(minIt == index->end())
+    if (minIt == index->end())
       DBUG_RETURN(HA_POS_ERROR);
 
-    if(min_key->flag == HA_READ_AFTER_KEY)
+    if (min_key->flag == HA_READ_AFTER_KEY)
       minIt++;
 
     auto maxIt = index->find(crunchMaxKey);
-    if(maxIt == index->end())
+    if (maxIt == index->end())
       DBUG_RETURN(HA_POS_ERROR);
 
-    if(max_key->flag == HA_READ_BEFORE_KEY)
+    if (max_key->flag == HA_READ_BEFORE_KEY)
       maxIt--;
 
     records = std::distance(minIt, maxIt);
   } else {
-    if(unConsolidatedIndexes.find(indexID) == unConsolidatedIndexes.end())
+    if (unConsolidatedIndexes.find(indexID) == unConsolidatedIndexes.end())
       DBUG_RETURN(HA_POS_ERROR);
 
     auto &index = unConsolidatedIndexes[indexID];
 
     auto minIt = index->find(crunchMinKey);
-    if(minIt == index->end())
+    if (minIt == index->end())
       DBUG_RETURN(HA_POS_ERROR);
 
-    if(min_key->flag == HA_READ_AFTER_KEY)
+    if (min_key->flag == HA_READ_AFTER_KEY)
       minIt++;
 
     auto maxIt = index->find(crunchMaxKey);
-    if(maxIt == index->end())
+    if (maxIt == index->end())
       DBUG_RETURN(HA_POS_ERROR);
 
-    if(max_key->flag == HA_READ_BEFORE_KEY)
+    if (max_key->flag == HA_READ_BEFORE_KEY)
       maxIt--;
 
     records = std::distance(minIt, maxIt);
@@ -1738,9 +1762,19 @@ ha_rows crunch::records_in_range(uint indexID, key_range *min_key, key_range *ma
   DBUG_RETURN(records);
 }
 
+int crunch::index_init(uint keynr, bool sorted) {
+  DBUG_ENTER("crunch::index_init");
+  int ret = findTableFiles(name);
+  active_index = keynr;
+  DBUG_RETURN(ret);
+}
+
 /*int crunch::index_read(uchar * buf, const uchar * key, uint key_len, enum ha_rkey_function find_flag) {
   DBUG_ENTER("crunch::index_read");
-
+  // Copy the key prefix for lookup.
+//  std::unique_ptr<uchar[]> prefix_key = std::unique_ptr<uchar[]>(new uchar[key_len]);
+//  std::memcpy(prefix_key.get(), (void *) key, key_len);
+  crunchy::key(key, table->key_info[active_index]);
   DBUG_RETURN(0);
 }
 
@@ -1748,58 +1782,143 @@ int crunch::index_read_last(uchar * buf, const uchar * key, key_part_map keypart
   DBUG_ENTER("crunch::index_read_last");
 
   DBUG_RETURN(0);
-}
- */
+}*/
 
-int crunch::index_read_map(uchar * buf, const uchar * key, key_part_map keypart_map,
-                   enum ha_rkey_function find_flag){
+
+int crunch::index_read_map(uchar *buf, const uchar *key, key_part_map keypart_map,
+                           enum ha_rkey_function find_flag) {
   DBUG_ENTER("crunch::index_read_map");
+  int rc = 0;
+  crunchy::key findKey(key, table->key_info[active_index], keypart_map);
+  if (unConsolidatedIndexes.find(active_index) != unConsolidatedIndexes.end()) {
+    auto &indexBTree = unConsolidatedIndexes[active_index];
+    auto foundRow = indexBTree->lower_bound(findKey);
+    if (foundRow == indexBTree->end()) {
+      rc = -2000;
+    } else {
+      capnp::DynamicStruct::Reader rowLocation = foundRow->second.get(
+          CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
+      rnd_pos(rowLocation);
+    }
+  } else if (unConsolidatedUniqueIndexes.find(active_index) != unConsolidatedUniqueIndexes.end()) {
+    auto &indexBTree = unConsolidatedIndexes[active_index];
+    auto foundRow = indexBTree->lower_bound(findKey);
+    if (foundRow == indexBTree->end()) {
+      rc = -2001;
+    } else {
+      capnp::DynamicStruct::Reader rowLocation = foundRow->second.get(
+          CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
+      rnd_pos(rowLocation);
+    }
 
-  DBUG_RETURN(0);
+  } else {
+    rc = -2002;
+  }
+  DBUG_RETURN(rc);
 }
-int crunch::index_read_idx_map(uchar * buf, uint idx, const uchar * key,
-                       key_part_map keypart_map,
-                       enum ha_rkey_function find_flag){
+
+int crunch::index_read_idx_map(uchar *buf, uint idx, const uchar *key,
+                               key_part_map keypart_map,
+                               enum ha_rkey_function find_flag) {
   DBUG_ENTER("crunch::index_read_idx_map");
+  int rc = 0;
+  try {
+    crunchy::key findKey(key, table->key_info[idx]);
+    if (unConsolidatedUniqueIndexes.find(idx) != unConsolidatedUniqueIndexes.end()) {
+      auto &indexBTree = unConsolidatedUniqueIndexes[idx];
+      std::cerr << "btree size: " << indexBTree->size() << std::endl;
+      auto foundRow = indexBTree->lower_bound(findKey);
+      if (foundRow == indexBTree->end()) {
+        rc = -2000;
+      } else {
+        std::cerr << "Found row key: " << foundRow->first << std::endl;
+//        dynamicPrintValue(foundRow->second);
+
+        /*std::cerr << "index struct has fields:";
+        bool first = true;
+        for(auto it : foundRow->second.getSchema().getFields()) {
+          if(first)
+            std::cerr << ",";
+          std::cerr << " " << it.getProto().getName().cStr();
+          if(foundRow->second.has(it)) {
+            std::cerr << "=";
+            dynamicPrintValue(foundRow->second.get(it));
+          }
+          std::cerr << std::endl;
+        }*/
+        //std::cerr << "has " << CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME << "="
+        //          << foundRow->second.has(CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME) << std::endl;
+        capnp::DynamicStruct::Reader rowLocation = foundRow->second.get(
+            CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
+        rnd_pos(rowLocation);
+      }
+    } else if (unConsolidatedIndexes.lower_bound(idx) != unConsolidatedIndexes.end()) {
+      auto &indexBTree = unConsolidatedIndexes[idx];
+      auto foundRow = indexBTree->find(findKey);
+      if (foundRow == indexBTree->end()) {
+        rc = -2001;
+      } else {
+        capnp::DynamicStruct::Reader rowLocation = foundRow->second.get(
+            CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
+        rnd_pos(rowLocation);
+      }
+
+    } else {
+      rc = -2002;
+    }
+  } catch (kj::Exception e) {
+    std::cerr << "exception on table " << name << ", line: " << __FILE__ << ":" << __LINE__
+              << ", exception_line: " << e.getFile() << ":" << e.getLine()
+              << ", type: " << (int) e.getType()
+              << ", e.what(): " << e.getDescription().cStr() << std::endl;
+    rc = -2003;
+  } catch (const std::exception &e) {
+    // Log errors
+    std::cerr << "index_read_idx_map error for table " << name << ": " << e.what() << std::endl;
+    rc = -2004;
+  }
+
+  DBUG_RETURN(rc);
 
   DBUG_RETURN(0);
 }
-int crunch::index_read_last_map(uchar * buf, const uchar * key,
-                        key_part_map keypart_map){
+
+int crunch::index_read_last_map(uchar *buf, const uchar *key,
+                                key_part_map keypart_map) {
   DBUG_ENTER("crunch::index_read_last_map");
 
   DBUG_RETURN(0);
 }
 
-int crunch::index_next(uchar * buf) {
+int crunch::index_next(uchar *buf) {
   DBUG_ENTER("crunch::index_next");
 
   DBUG_RETURN(0);
 };
 
-int crunch::index_prev(uchar * buf) {
+int crunch::index_prev(uchar *buf) {
   DBUG_ENTER("crunch::index_prev");
 
   DBUG_RETURN(0);
 };
 
-int crunch::index_first(uchar * buf) {
+int crunch::index_first(uchar *buf) {
   DBUG_ENTER("crunch::index_first");
 
   DBUG_RETURN(0);
 };
 
-int crunch::index_last(uchar * buf) {
+int crunch::index_last(uchar *buf) {
   DBUG_ENTER("crunch::index_last");
 
   DBUG_RETURN(0);
 };
 
-int crunch::index_next_same(uchar * buf, const uchar * key, uint keylen) {
+/*int crunch::index_next_same(uchar * buf, const uchar * key, uint keylen) {
   DBUG_ENTER("crunch::index_next_same");
 
   DBUG_RETURN(0);
-}
+}*/
 
 int crunch::disconnect(handlerton *hton, MYSQL_THD thd) {
   DBUG_ENTER("crunch::disconnect");
@@ -1821,8 +1940,8 @@ static int crunch_commit(handlerton *hton, THD *thd, bool all) {
       thd_set_ha_data(thd, hton, NULL);
       delete txn;
 
-      if(!ret)
-        ret = ((crunch *)hton)->findTableFiles();
+      if (!ret)
+        ret = ((crunch *) hton)->findTableFiles();
     }
   }
 

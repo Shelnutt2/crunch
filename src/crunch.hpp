@@ -79,6 +79,9 @@ class crunch : public handler {
     int rnd_init(bool scan);
     std::unique_ptr<capnp::FlatArrayMessageReader> rnd_row(int *err);
     int rnd_next(uchar *buf);
+    int rnd_pos(std::string fileName, uint64_t rowStartlocation);
+    int rnd_pos(CrunchRowLocation::Reader rowLocation);
+    int rnd_pos(capnp::DynamicStruct::Reader rowLocation);
     int rnd_pos(uchar * buf, uchar *pos);
     int rnd_end();
     void build_row(capnp::DynamicStruct::Builder *row, capnp::DynamicList::Builder *nulls);
@@ -122,6 +125,7 @@ class crunch : public handler {
 
     /* START INDEX SUPPORT */
     ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key);
+    int index_init(uint keynr, bool sorted);
     /*int index_read(uchar * buf, const uchar * key, uint key_len, enum ha_rkey_function find_flag);
     int index_read_idx(uchar * buf, uint keynr, const uchar * key, ulonglong keypart_map,
                        enum ha_rkey_function find_flag);
@@ -142,7 +146,7 @@ class crunch : public handler {
     int index_prev(uchar * buf);
     int index_first(uchar * buf);
     int index_last(uchar * buf);
-    int index_next_same(uchar * buf, const uchar * key, uint keylen);
+    //int index_next_same(uchar * buf, const uchar * key, uint keylen);
 
     int createIndexesFromTable(TABLE *table_arg);
     int build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tableRow,
@@ -166,7 +170,7 @@ class crunch : public handler {
     /* END INDEX SUPPORT */
 private:
 
-    bool capnpDataToMysqlBuffer(uchar *buf, capnp::DynamicStruct::Reader  dynamicStructReader);
+    bool capnpDataToMysqlBuffer(capnp::DynamicStruct::Reader  dynamicStructReader);
 
 
     bool mmapData(std::string fileName);

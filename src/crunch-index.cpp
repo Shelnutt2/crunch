@@ -59,8 +59,9 @@ int crunch::build_and_write_indexes(uchar *buf, std::shared_ptr<capnp::MallocMes
     // Write index
     ::crunchy::index index1 = indexSchemas[index.first];
 
-        crunchy::key indexKey(indexRow->getRoot<capnp::DynamicStruct>(index1.schema).get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
-                     table->key_info[index.first]);
+    crunchy::key indexKey(indexRow->getRoot<capnp::DynamicStruct>(index1.schema).get(
+        CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
+                          table->key_info[index.first]);
 
     for (auto &indexMap : unConsolidatedUniqueIndexes) {
       if (index1.indexFlags & HA_NOSAME && indexMap.second->find(indexKey) != indexMap.second->end()) {
@@ -136,6 +137,8 @@ crunch::build_index(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tab
   capnp::DynamicStruct::Builder tableRow = tableRowMessage->getRoot<capnp::DynamicStruct>(schemaForMessage.schema);
 
   // Set crunch row location struct
+  // CrunchRowLocation::Builder builder = rowBuilder.init(
+  //     CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>().as<CrunchRowLocation>();
   capnp::DynamicStruct::Builder builder = rowBuilder.init(
       CRUNCH_ROW_LOCATION_STRUCT_FIELD_NAME).as<capnp::DynamicStruct>();
   // Get datafile base name
@@ -143,9 +146,17 @@ crunch::build_index(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tab
   char *buff = new char[DataFile.size() + 1];
   strcpy(buff, DataFile.c_str());
 
+  /*builder.setFileName(basename(buff));
+
+  int fd = txn->getTransactionDataFileDescriptor(this->name);
+  builder.setRowEndLocation((uint64_t)lseek(fd, 0, SEEK_CUR)+tableRowMessage->getSegmentsForOutput().asBytes().size()*sizeof(unsigned char));
+  builder.setRowStartLocation((uint64_t)lseek(fd, 0, SEEK_CUR));*/
+
   builder.set("fileName", basename(buff));
-  builder.set("rowEndLocation", 0);
-  builder.set("rowStartLocation", 1);
+  int fd = txn->getTransactionDataFileDescriptor(this->name);
+  builder.set("rowEndLocation", (uint64_t) lseek(fd, 0, SEEK_CUR) +
+                                tableRowMessage->getSegmentsForOutput().asBytes().size() * sizeof(unsigned char));
+  builder.set("rowStartLocation", (uint64_t) lseek(fd, 0, SEEK_CUR));
 
 
   capnp::StructSchema::FieldList indexFields = indexSchema.getFields();
@@ -157,7 +168,10 @@ crunch::build_index(uchar *buf, std::shared_ptr<capnp::MallocMessageBuilder> tab
   uchar *to_key = new uchar[table->key_info[indexID].key_length];
   key_copy(to_key, buf, &table->key_info[indexID], table->key_info[indexID].key_length);
   kj::ArrayPtr<kj::byte> kjArray(to_key, table->key_info[indexID].key_length);
-  rowBuilder.set(CRUNCH_INDEX_KEY_FIELD_NAME, capnp::Text::Builder(capnp::Data::Builder(kjArray).asChars().begin()).asReader());
+  rowBuilder.set(CRUNCH_INDEX_KEY_FIELD_NAME,
+                 capnp::Text::Builder(capnp::Data::Builder(kjArray).asChars().begin()).asReader());
+  crunchy::key keyBuilding(to_key, table->key_info[indexID]);
+  std::cerr << "Bulding key " << keyBuilding << " to id " << indexID << std::endl;
 
   return indexRow;
 }
@@ -173,30 +187,41 @@ int crunch::readIndexIntoBTree(int indexFileDescriptor, indexFile indexStruct) {
       try {
         capnp::StreamFdMessageReader message(indexFileDescriptor);
         capnp::DynamicStruct::Reader indexRow = message.getRoot<capnp::DynamicStruct>(indexSchema.schema);
+        std::cerr << "row from disk: ";
+        dynamicPrintValue(indexRow);
+        std::cerr <<std::endl;
 
         if (indexSchema.indexFlags & HA_NOSAME) {
-          std::unique_ptr<crunchy::crunchUniqueIndexMap>& index = unConsolidatedUniqueIndexes[indexStruct.indexID];
-          if(index == nullptr) {
+          std::unique_ptr<crunchy::crunchUniqueIndexMap> &index = unConsolidatedUniqueIndexes[indexStruct.indexID];
+          if (index == nullptr) {
             index = std::make_unique<crunchy::crunchUniqueIndexMap>();
           }
 
           // TODO: check if inserted successfully
           crunchy::key keyToAdd(indexRow.get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
-                                            table->key_info[indexStruct.indexID]);
-          auto insertedPair = index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
-          if(!insertedPair.second)
-            return -2;
+                                table->key_info[indexStruct.indexID]);
+          std::cerr << "Adding unique key " << keyToAdd << " to id " << indexStruct.indexID << std::endl;
+          index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
+          std::cerr << "row from rtree: ";
+          dynamicPrintValue(index->find(keyToAdd)->second);
+          std::cerr <<std::endl;
+          //if(!insertedPair.second)
+          //  return -2;
 
         } else {
-          std::unique_ptr<crunchy::crunchIndexMap>& index = unConsolidatedIndexes[indexStruct.indexID];
-          if(index == nullptr) {
+          std::unique_ptr<crunchy::crunchIndexMap> &index = unConsolidatedIndexes[indexStruct.indexID];
+          if (index == nullptr) {
             index = std::make_unique<crunchy::crunchIndexMap>();
           }
 
           // TODO: check if inserted successfully
           crunchy::key keyToAdd(indexRow.get(CRUNCH_INDEX_KEY_FIELD_NAME).as<capnp::Text>().asBytes().asBytes().begin(),
                                 table->key_info[indexStruct.indexID]);
+          std::cerr << "Adding non-unique key " << keyToAdd << " to id " << indexStruct.indexID << std::endl;
           index->insert(std::pair<crunchy::key, capnp::DynamicStruct::Reader>(keyToAdd, indexRow));
+          std::cerr << "row from rtree: ";
+          dynamicPrintValue(index->find(keyToAdd)->second);
+          std::cerr <<std::endl;
         }
 
       } catch (kj::Exception e) {
